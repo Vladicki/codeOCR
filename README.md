@@ -1,2 +1,2 @@
 # OCR-clipboard
-OCR-powered clipboard tool built with Python
+OCR-powered tool built with GO

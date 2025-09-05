@@ -4,12 +4,31 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 func main() {
 	fmt.Println("hui")
 
+	f, err := os.Open("test.txt")
+
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(f)
+	for {
+		data := make([]byte, 8)
+		n, err := f.Read(data)
+		if err != nil {
+			break
+		}
+		fmt.Printf("read: %s\n", string(data[:n]))
+
+	}
+
 	url := "https://postman-echo.com/get"
+
 	resp, err := http.Get(url)
 	if err != nil {
 		println(err)

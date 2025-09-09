@@ -41,5 +41,20 @@ func main() {
 	}
 
 	fmt.Println(string(body))
-	fmt.Println(string(body))
+	ch := make(chan int)
+
+	go func() {
+		for i := range 10 {
+			ch <- i + 1
+		}
+		close(ch)
+	}()
+	for {
+		v, ok := <-ch
+		if !ok {
+			break
+		}
+		fmt.Println("v = ", v)
+	}
+
 }

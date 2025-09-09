@@ -10,20 +10,19 @@ import (
 func main() {
 	fmt.Println("hui")
 
-	f, err := os.Open("test.txt")
+	f, err := os.Open("./test.txt")
 
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(f)
 	for {
-		data := make([]byte, 8)
-		n, err := f.Read(data)
+		data := make([]byte, 10)
+		_, err := f.Read(data)
 		if err != nil {
 			break
 		}
-		fmt.Printf("read: %s\n", string(data[:n]))
+		fmt.Printf("read: %s\n", string(data))
 
 	}
 
@@ -41,5 +40,6 @@ func main() {
 		return
 	}
 
+	fmt.Println(string(body))
 	fmt.Println(string(body))
 }

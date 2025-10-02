@@ -1,124 +1,249 @@
-// --- select.js (FINAL REDESIGN WITH SCALING) ---
+// select.js
+(() => {
+  // Robust selection content script that computes coords in image pixels
+  let overlay = null;
+  let selection = null;
+  let isSelecting = false;
+  let activePointerId = null;
 
-let overlay;
-let selectionDiv;
-let isSelecting = false;
-let startX, startY;
+  // Start coords (page/document coords include scroll)
+  let startPageX = 0,
+    startPageY = 0;
+  // Also keep viewport coords for drawing visuals
+  let startClientX = 0,
+    startClientY = 0;
 
-// Function to create and attach the selection UI
-function createUI() {
-  overlay = document.createElement("div");
-  overlay.id = "codeocr-overlay";
-  overlay.style.position = "fixed";
-  overlay.style.top = "0";
-  overlay.style.left = "0";
-  overlay.style.width = "100vw";
-  overlay.style.height = "100vh";
-  overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-  overlay.style.zIndex = "999999";
-  document.body.appendChild(overlay);
-
-  selectionDiv = document.createElement("div");
-  selectionDiv.id = "codeocr-selection";
-  selectionDiv.style.position = "absolute";
-  selectionDiv.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-  selectionDiv.style.border = "2px dashed red";
-  selectionDiv.style.boxShadow = "0 0 0 9999px rgba(0, 0, 0, 0.5)";
-  selectionDiv.style.cursor = "crosshair";
-  overlay.appendChild(selectionDiv);
-
-  overlay.addEventListener("mousedown", startSelection);
-  overlay.addEventListener("mousemove", updateSelection);
-  overlay.addEventListener("mouseup", endSelection);
-}
-
-function startSelection(e) {
-  isSelecting = true;
-
-  // Use clientX/Y for viewport-relative start
-  startX = e.clientX;
-  startY = e.clientY;
-
-  selectionDiv.style.left = `${startX}px`;
-  selectionDiv.style.top = `${startY}px`;
-  selectionDiv.style.width = "0";
-  selectionDiv.style.height = "0";
-  e.preventDefault();
-}
-
-function updateSelection(e) {
-  if (!isSelecting) return;
-
-  const currentX = e.clientX;
-  const currentY = e.clientY;
-
-  const width = Math.abs(currentX - startX);
-  const height = Math.abs(currentY - startY);
-
-  const newX = Math.min(currentX, startX);
-  const newY = Math.min(currentY, startY);
-
-  selectionDiv.style.left = `${newX}px`;
-  selectionDiv.style.top = `${newY}px`;
-  selectionDiv.style.width = `${width}px`;
-  selectionDiv.style.height = `${height}px`;
-}
-
-function endSelection(e) {
-  if (!isSelecting) return;
-  isSelecting = false;
-
-  // Get the final viewport-relative end coordinates
-  const endX = e.clientX;
-  const endY = e.clientY;
-
-  // --- CRITICAL FIX: Get Scroll Position Reliably ---
-  const scrollX = document.documentElement.scrollLeft;
-  const scrollY = document.documentElement.scrollTop;
-
-  // --- CRITICAL FIX: Determine the Scaling Factor (Zoom) ---
-  // This compares the actual device pixels to the CSS pixels.
-  // This is often the root of all evil in coordinate mismatches.
-  const scalingFactor =
-    window.devicePixelRatio / (window.screen.availWidth / window.innerWidth);
-
-  // As a fallback for older Firefox:
-  const finalScalingFactor =
-    scalingFactor && isFinite(scalingFactor) ? scalingFactor : 1;
-
-  // Calculate final coordinates relative to the WHOLE DOCUMENT
-  let x_start = Math.min(startX, endX);
-  let y_start = Math.min(startY, endY);
-  let width = Math.abs(endX - startX);
-  let height = Math.abs(endY - startY);
-
-  // Apply scroll offset
-  let finalX = x_start + scrollX;
-  let finalY = y_start + scrollY;
-
-  // Scale coordinates to match the screenshot's pixel density
-  const coords = {
-    // Divide by the scaling factor. If scalingFactor is 1 (no zoom/DPR mismatch), nothing changes.
-    x: Math.round(finalX * finalScalingFactor),
-    y: Math.round(finalY * finalScalingFactor),
-    width: Math.round(width * finalScalingFactor),
-    height: Math.round(height * finalScalingFactor),
-  };
-
-  // Remove the selection UI
-  overlay.remove();
-
-  if (coords.width > 5 && coords.height > 5) {
-    // Send the scaled, document-relative coordinates
-    browser.runtime.sendMessage({
-      command: "screenshot_selected_area",
-      coords: coords,
+  function createUI() {
+    overlay = document.createElement("div");
+    overlay.id = "codeocr-overlay";
+    Object.assign(overlay.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: String(2147483647),
+      cursor: "crosshair",
+      userSelect: "none",
+      touchAction: "none",
+      background: "transparent",
     });
-  } else {
-    console.log("Selection canceled: area was too small.");
+
+    selection = document.createElement("div");
+    selection.id = "codeocr-selection";
+    Object.assign(selection.style, {
+      position: "absolute",
+      left: "0px",
+      top: "0px",
+      width: "0px",
+      height: "0px",
+      pointerEvents: "none",
+      boxShadow: "0 0 0 9999px rgba(0,0,0,0.45)",
+      backgroundColor: "rgba(255,255,255,0.04)",
+      border: "3px dashed #b80c14ee",
+      borderRadius: "4px",
+    });
+
+    overlay.appendChild(selection);
+    document.documentElement.appendChild(overlay);
+
+    // pointer events (works for mouse, touch, pen)
+    overlay.addEventListener("pointerdown", onPointerDown, { passive: false });
+    overlay.addEventListener("pointermove", onPointerMove, { passive: false });
+    // pointerup/listen on window to ensure we catch it even if pointer leaves overlay
+    window.addEventListener("pointerup", onPointerUp, { passive: false });
+    window.addEventListener("pointercancel", onPointerCancel, {
+      passive: false,
+    });
+    window.addEventListener("keydown", onKeyDown);
+  }
+
+  function onPointerDown(e) {
+    // only primary button
+    if (!e.isPrimary) return;
+    if (typeof e.button === "number" && e.button !== 0) return;
+    e.preventDefault();
+
+    activePointerId = e.pointerId;
+    try {
+      overlay.setPointerCapture(activePointerId);
+    } catch (err) {
+      /* ignore */
+    }
+
+    isSelecting = true;
+
+    // store start coords: page coords include scroll (good for final)
+    startPageX = e.pageX;
+    startPageY = e.pageY;
+
+    // client coords for drawing
+    startClientX = e.clientX;
+    startClientY = e.clientY;
+
+    selection.style.left = `${startClientX}px`;
+    selection.style.top = `${startClientY}px`;
+    selection.style.width = `0px`;
+    selection.style.height = `0px`;
+  }
+
+  function onPointerMove(e) {
+    if (!isSelecting || e.pointerId !== activePointerId) return;
+    e.preventDefault();
+
+    const curX = e.clientX;
+    const curY = e.clientY;
+    const left = Math.min(curX, startClientX);
+    const top = Math.min(curY, startClientY);
+    const width = Math.abs(curX - startClientX);
+    const height = Math.abs(curY - startClientY);
+
+    selection.style.left = `${Math.round(left)}px`;
+    selection.style.top = `${Math.round(top)}px`;
+    selection.style.width = `${Math.round(width)}px`;
+    selection.style.height = `${Math.round(height)}px`;
+  }
+
+  function onPointerUp(e) {
+    if (!isSelecting) return;
+    // ensure it's the same pointer
+    if (
+      e &&
+      typeof e.pointerId !== "undefined" &&
+      e.pointerId !== activePointerId
+    )
+      return;
+    e.preventDefault();
+    finalizeSelection(e);
+  }
+
+  function onPointerCancel(e) {
+    if (!isSelecting) return;
+    cleanup();
     browser.runtime.sendMessage({ command: "selection_cancelled" });
   }
-}
 
-// Start the selection process when the script is injected
-createUI();
+  function onKeyDown(e) {
+    if (e.key === "Escape") {
+      cleanup();
+      browser.runtime.sendMessage({ command: "selection_cancelled" });
+    }
+  }
+
+  function finalizeSelection(e) {
+    // end page coords include scroll
+    const endPageX = e ? e.pageX : startPageX;
+    const endPageY = e ? e.pageY : startPageY;
+
+    const xStartPage = Math.min(startPageX, endPageX);
+    const yStartPage = Math.min(startPageY, endPageY);
+    const selWidthPage = Math.abs(endPageX - startPageX);
+    const selHeightPage = Math.abs(endPageY - startPageY);
+
+    // compute viewport-relative CSS coords (captureVisibleTab captures the visible viewport)
+    const scrollX =
+      window.pageXOffset || document.documentElement.scrollLeft || 0;
+    const scrollY =
+      window.pageYOffset || document.documentElement.scrollTop || 0;
+
+    let vpX = xStartPage - scrollX;
+    let vpY = yStartPage - scrollY;
+    let vpW = selWidthPage;
+    let vpH = selHeightPage;
+
+    // If selection started or extended outside viewport, clamp to visible area
+    // adjust width/height when portion is off-screen
+    if (vpX < 0) {
+      vpW += vpX; // reduce width
+      vpX = 0;
+    }
+    if (vpY < 0) {
+      vpH += vpY;
+      vpY = 0;
+    }
+
+    if (vpX + vpW > window.innerWidth) vpW = window.innerWidth - vpX;
+    if (vpY + vpH > window.innerHeight) vpH = window.innerHeight - vpY;
+
+    // If the visible portion is too small, cancel
+    if (vpW < 5 || vpH < 5) {
+      cleanup();
+      browser.runtime.sendMessage({ command: "selection_cancelled" });
+      return;
+    }
+
+    // Convert viewport CSS pixels -> image (device) pixels.
+    // captureVisibleTab generally returns an image sized roughly: innerWidth * devicePixelRatio
+    const dpr = window.devicePixelRatio || 1;
+
+    const xImg = Math.round(vpX * dpr);
+    const yImg = Math.round(vpY * dpr);
+    const wImg = Math.round(vpW * dpr);
+    const hImg = Math.round(vpH * dpr);
+
+    // Cleanup the UI before sending
+    cleanup();
+
+    // Send the coordinates in IMAGE pixels (ready for cropImageOnCanvas)
+    browser.runtime.sendMessage({
+      command: "screenshot_selected_area",
+      coords: {
+        x: xImg,
+        y: yImg,
+        width: wImg,
+        height: hImg,
+
+        // extra metadata (optional, useful for debugging in background)
+        __meta: {
+          viewportWidthCss: window.innerWidth,
+          viewportHeightCss: window.innerHeight,
+          devicePixelRatio: dpr,
+          scrollX,
+          scrollY,
+          pageWidth: document.documentElement.scrollWidth,
+          pageHeight: document.documentElement.scrollHeight,
+          originalSelectionPage: {
+            x: xStartPage,
+            y: yStartPage,
+            width: selWidthPage,
+            height: selHeightPage,
+          },
+          visibleSelectionCss: { x: vpX, y: vpY, width: vpW, height: vpH },
+        },
+      },
+    });
+  }
+
+  function cleanup() {
+    try {
+      overlay?.removeEventListener("pointerdown", onPointerDown);
+    } catch (e) {}
+    try {
+      overlay?.removeEventListener("pointermove", onPointerMove);
+    } catch (e) {}
+    try {
+      window.removeEventListener("pointerup", onPointerUp);
+    } catch (e) {}
+    try {
+      window.removeEventListener("pointercancel", onPointerCancel);
+    } catch (e) {}
+    try {
+      window.removeEventListener("keydown", onKeyDown);
+    } catch (e) {}
+
+    // release pointer capture if still held
+    try {
+      if (activePointerId != null)
+        overlay?.releasePointerCapture?.(activePointerId);
+    } catch (e) {}
+
+    // remove DOM
+    try {
+      overlay?.remove();
+    } catch (e) {}
+    overlay = null;
+    selection = null;
+    isSelecting = false;
+    activePointerId = null;
+  }
+
+  // Start UI
+  createUI();
+})();

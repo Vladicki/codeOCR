@@ -244,6 +244,14 @@
     activePointerId = null;
   }
 
+  browser.runtime.onMessage.addListener((message) => {
+    if (message.command === "cancel_selection") {
+      cleanup();
+
+      // This stops the execution and resets the state in background.js
+      browser.runtime.sendMessage({ command: "selection_cancelled" });
+    }
+  });
   // Start UI
   createUI();
 })();

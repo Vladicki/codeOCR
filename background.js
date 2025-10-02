@@ -117,20 +117,88 @@ browser.runtime.onMessage.addListener((message, sender) => {
   }
 });
 
-// Listen for the user clicking the extension's toolbar icon
-browser.browserAction.onClicked.addListener((tab) => {
-  // Inject the content script (content.js) to start the selection UI
-  browser.tabs
-    .executeScript(tab.id, {
-      file: "select.js",
-    })
-    .then(() => {
-      // Set the body cursor for visual feedback while selecting
-      browser.tabs.executeScript(tab.id, {
-        code: "document.body.style.cursor = 'crosshair';",
+const activeTabs = new Set();
+
+function startSelectionMode(tab) {
+  if (activeTabs.has(tab.id)) {
+    // If selection is already active, we want to cancel it.
+    // We do this by sending a message to the content script in that tab.
+    browser.tabs
+      .sendMessage(tab.id, { command: "cancel_selection" })
+      .catch((error) => {
+        // If the content script is gone, just remove the tab from the set
+        console.warn(
+          "Could not send cancel message, force-removing from activeTabs.",
+          error,
+        );
+        activeTabs.delete(tab.id);
       });
-    })
-    .catch((error) => {
-      console.error("Error injecting script:", error);
+  } else {
+    // If selection is NOT active, start it
+
+    // 1. Inject the content script (select.js) to start the selection UI
+    browser.tabs
+      .executeScript(tab.id, {
+        file: "select.js",
+      })
+      .then(() => {
+        // 2. Set the body cursor for visual feedback
+        browser.tabs.executeScript(tab.id, {
+          code: "document.body.style.cursor = 'crosshair';",
+        });
+        // 3. Add the tab to the active set
+        activeTabs.add(tab.id);
+      })
+      .catch((error) => {
+        console.error("Error injecting script:", error);
+      });
+  }
+}
+
+// Listener for messages from the content script
+browser.runtime.onMessage.addListener((message, sender) => {
+  // ... (Your existing logic for cropping and sending to Go backend remains here) ...
+
+  // Always reset the cursor on the tab after receiving a message
+  browser.tabs.executeScript(sender.tab.id, {
+    code: "document.body.style.cursor = 'default';",
+  });
+
+  // 🚨 Critical: Remove tab from the set when selection is finished or cancelled
+  if (
+    sender.tab &&
+    sender.tab.id &&
+    (message.command === "screenshot_selected_area" ||
+      message.command === "selection_cancelled")
+  ) {
+    activeTabs.delete(sender.tab.id);
+  }
+
+  if (message.command === "screenshot_selected_area") {
+    // ... (rest of your cropping/sending logic) ...
+    return true;
+  }
+
+  if (message.command === "selection_cancelled") {
+    console.log("Selection was cancelled by the user or was too small.");
+  }
+});
+
+// 1. Listen for the user clicking the extension's toolbar icon
+browser.browserAction.onClicked.addListener(startSelectionMode);
+
+// 2. LISTEN FOR THE KEYBOARD COMMAND (Alt+C)
+browser.commands.onCommand.addListener((command) => {
+  if (command === "toggle-selection-mode") {
+    browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+      if (tabs.length > 0) {
+        startSelectionMode(tabs[0]);
+      }
     });
+  }
+});
+
+// 🚨 CLEANUP: Remove tabs from the set when they are closed
+browser.tabs.onRemoved.addListener((tabId) => {
+  activeTabs.delete(tabId);
 });

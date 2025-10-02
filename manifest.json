@@ -18,6 +18,15 @@
             "background.js"
         ]
     },
+    "commands": {
+        "toggle-selection-mode": {
+            "suggested_key": {
+                "default": "Alt+C",
+                "mac": "Command+C"
+            },
+            "description": "Toggle selection mode for codeOCR"
+        }
+    },
     "browser_action": {
         "default_icon": "icons/icon-48.png",
         "default_title": "Take Code Screenshot"

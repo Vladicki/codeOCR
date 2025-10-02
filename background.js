@@ -1,4 +1,7 @@
-// --- background.js (FINAL ROBUST VERSION) ---
+// --- background.js (V3: Action, Scripting, and Display Logic) 🚀 ---
+
+// 💡 IMPORT: Import the prompt text from the external module
+import { GEMINI_PROMPT_TEXT } from "./prompt.js";
 
 /**
  * Uses Fetch, createImageBitmap, and OffscreenCanvas for the most reliable,
@@ -51,103 +54,96 @@ function cropImageOnCanvas(dataUrl, coords) {
 }
 
 /**
- * Sends the Base64 image data to the Golang backend.
+ * Sends the Base64 image data to the Golang backend and displays the result.
  */
-function sendImageToBackend(dataUrl) {
+function sendImageToBackend(tabId, dataUrl) {
   const apiEndpoint = "http://localhost:8080/process-image";
 
   fetch(apiEndpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       image_data: dataUrl,
-      prompt: "Extract the code from this image and identify the language.",
+      // 💡 Using the imported constant here
+      prompt: GEMINI_PROMPT_TEXT,
     }),
   })
     .then((response) => {
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        return response.text().then((text) => {
+          throw new Error(
+            `HTTP error! Status: ${response.status}. Message: ${text}`,
+          );
+        });
       }
       return response.json();
     })
     .then((data) => {
       console.log("Gemini Response Received:", data);
-      // ... (handle response)
+
+      // Ensure you use the key that your Go backend returns (result_text)
+      const resultText =
+        data.result_text ||
+        data.message ||
+        "No recognized code found or processing failed.";
+
+      // Send the result to the display.js content script
+      browser.tabs.sendMessage(tabId, {
+        command: "display_result",
+        text: resultText,
+      });
     })
     .catch((error) => {
       console.error("Error sending image to backend:", error);
+      // Display a user-friendly error message in the modal
+      browser.tabs.sendMessage(tabId, {
+        command: "display_result",
+        text: `[NETWORK ERROR] Failed to connect to local server (http://localhost:8080). Ensure your Go application is running. Details: ${error.message}`,
+      });
     });
 }
 
-// Listener for messages from the content script
-browser.runtime.onMessage.addListener((message, sender) => {
-  // Always reset the cursor on the tab after receiving a message
-  browser.tabs.executeScript(sender.tab.id, {
-    code: "document.body.style.cursor = 'default';",
-  });
-
-  if (message.command === "screenshot_selected_area") {
-    const coords = message.coords;
-
-    // 1. Capture the entire visible tab
-    browser.tabs
-      .captureVisibleTab(sender.tab.windowId, {
-        format: "png",
-      })
-      .then((dataUrl) => {
-        // 2. Crop the image on the canvas
-        return cropImageOnCanvas(dataUrl, coords);
-      })
-      .then((croppedDataUrl) => {
-        // 3. Send the cropped Data URL to your Golang server
-        sendImageToBackend(croppedDataUrl);
-      })
-      .catch((error) => {
-        console.error("Error processing screenshot:", error);
-      });
-
-    return true;
-  }
-
-  // Handle the 'selection_cancelled' message from content.js (to reset cursor)
-  if (message.command === "selection_cancelled") {
-    console.log("Selection was cancelled by the user or was too small.");
-  }
-});
-
 const activeTabs = new Set();
 
+/**
+ * V3 Implementation to inject and manage the selection script.
+ */
 function startSelectionMode(tab) {
-  if (activeTabs.has(tab.id)) {
-    // If selection is already active, we want to cancel it.
-    // We do this by sending a message to the content script in that tab.
+  const tabId = tab.id;
+
+  if (activeTabs.has(tabId)) {
+    // Cancel logic remains mostly the same
     browser.tabs
-      .sendMessage(tab.id, { command: "cancel_selection" })
+      .sendMessage(tabId, { command: "cancel_selection" })
       .catch((error) => {
-        // If the content script is gone, just remove the tab from the set
         console.warn(
           "Could not send cancel message, force-removing from activeTabs.",
           error,
         );
-        activeTabs.delete(tab.id);
+        activeTabs.delete(tabId);
       });
   } else {
-    // If selection is NOT active, start it
+    // Start selection mode (V3 scripting API)
 
-    // 1. Inject the content script (select.js) to start the selection UI
-    browser.tabs
-      .executeScript(tab.id, {
-        file: "select.js",
+    // 1. Inject the content script (select.js)
+    browser.scripting
+      .executeScript({
+        target: { tabId: tabId },
+        files: ["select.js"], // V3 uses 'files'
       })
       .then(() => {
-        // 2. Set the body cursor for visual feedback
-        browser.tabs.executeScript(tab.id, {
-          code: "document.body.style.cursor = 'crosshair';",
+        // 2. Set the body cursor for visual feedback (V3 scripting API)
+        return browser.scripting.executeScript({
+          target: { tabId: tabId },
+          // V3 often prefers 'func' for inline code execution
+          func: () => {
+            document.body.style.cursor = "crosshair";
+          },
         });
+      })
+      .then(() => {
         // 3. Add the tab to the active set
-        activeTabs.add(tab.id);
+        activeTabs.add(tabId);
       })
       .catch((error) => {
         console.error("Error injecting script:", error);
@@ -157,35 +153,50 @@ function startSelectionMode(tab) {
 
 // Listener for messages from the content script
 browser.runtime.onMessage.addListener((message, sender) => {
-  // ... (Your existing logic for cropping and sending to Go backend remains here) ...
+  const tabId = sender.tab.id;
 
-  // Always reset the cursor on the tab after receiving a message
-  browser.tabs.executeScript(sender.tab.id, {
-    code: "document.body.style.cursor = 'default';",
+  // 1. Always reset the cursor on the tab after receiving a message (V3 scripting API)
+  browser.scripting.executeScript({
+    target: { tabId: tabId },
+    func: () => {
+      document.body.style.cursor = "default";
+    },
   });
 
-  // 🚨 Critical: Remove tab from the set when selection is finished or cancelled
+  // 2. Critical: Remove tab from the set when selection is finished or cancelled
   if (
-    sender.tab &&
-    sender.tab.id &&
-    (message.command === "screenshot_selected_area" ||
-      message.command === "selection_cancelled")
+    message.command === "screenshot_selected_area" ||
+    message.command === "selection_cancelled"
   ) {
-    activeTabs.delete(sender.tab.id);
+    activeTabs.delete(tabId);
   }
 
   if (message.command === "screenshot_selected_area") {
-    // ... (rest of your cropping/sending logic) ...
-    return true;
-  }
+    const coords = message.coords;
 
-  if (message.command === "selection_cancelled") {
-    console.log("Selection was cancelled by the user or was too small.");
+    // 3. Capture the entire visible tab
+    browser.tabs
+      .captureVisibleTab(sender.tab.windowId, {
+        format: "png",
+      })
+      .then((dataUrl) => {
+        // 4. Crop the image on the canvas
+        return cropImageOnCanvas(dataUrl, coords);
+      })
+      .then((croppedDataUrl) => {
+        // 5. Send the cropped Data URL to your Golang server
+        sendImageToBackend(tabId, croppedDataUrl); // Pass tabId for display later
+      })
+      .catch((error) => {
+        console.error("Error processing screenshot:", error);
+      });
+
+    return true; // Indicates asynchronous response
   }
 });
 
-// 1. Listen for the user clicking the extension's toolbar icon
-browser.browserAction.onClicked.addListener(startSelectionMode);
+// 1. Listen for the user clicking the extension's toolbar icon (V3: browser.action)
+browser.action.onClicked.addListener(startSelectionMode);
 
 // 2. LISTEN FOR THE KEYBOARD COMMAND (Alt+C)
 browser.commands.onCommand.addListener((command) => {
@@ -198,7 +209,7 @@ browser.commands.onCommand.addListener((command) => {
   }
 });
 
-// 🚨 CLEANUP: Remove tabs from the set when they are closed
+// 3. CLEANUP: Remove tabs from the set when they are closed
 browser.tabs.onRemoved.addListener((tabId) => {
   activeTabs.delete(tabId);
 });

@@ -1,29 +1,27 @@
-// --- background.js (V3: Action, Scripting, and Display Logic) 🚀 ---
+// --- background.js ---
 
-// 💡 IMPORT: Import the prompt text from the external module
+// 💡 IMPORT: Import from external modules
 import { GEMINI_PROMPT_TEXT } from "./prompt.js";
+import { languages } from "./languages.js";
+
+// --- Global State ---
+const activeTabs = new Set();
+let lastCroppedImageDataByTab = {}; // Store image data by tab ID
+
+// ==========================================================
+// IMAGE AND API HANDLING
+// ==========================================================
 
 /**
- * Uses Fetch, createImageBitmap, and OffscreenCanvas for the most reliable,
- * in-memory cropping in a browser extension context.
- * It takes the full screenshot Data URL and the document-relative coordinates.
+ * Crops the captured screenshot using OffscreenCanvas.
  */
 function cropImageOnCanvas(dataUrl, coords) {
-  // 1. Convert the Data URL (Base64) to a Blob object
   return fetch(dataUrl)
     .then((res) => res.blob())
-    .then((blob) => {
-      // 2. Create an ImageBitmap from the Blob
-      return createImageBitmap(blob);
-    })
+    .then((blob) => createImageBitmap(blob))
     .then((imageBitmap) => {
-      // 3. Use OffscreenCanvas for efficient background processing
       const canvas = new OffscreenCanvas(coords.width, coords.height);
       const ctx = canvas.getContext("2d");
-
-      // 4. Draw only the selected portion of the ImageBitmap
-      // Source: (x, y, width, height) from the captured image
-      // Destination: (0, 0, width, height) of the new canvas
       ctx.drawImage(
         imageBitmap,
         coords.x,
@@ -35,12 +33,9 @@ function cropImageOnCanvas(dataUrl, coords) {
         coords.width,
         coords.height,
       );
-
-      // 5. Convert the cropped canvas data to a Blob using the modern API
       return canvas.convertToBlob({ type: "image/png" });
     })
     .then((croppedBlob) => {
-      // 6. Read the Blob back as a Data URL (Base64 string)
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
@@ -48,24 +43,27 @@ function cropImageOnCanvas(dataUrl, coords) {
       });
     })
     .catch((error) => {
-      console.error("Cropping failed (Final API Check):", error);
+      console.error("Cropping failed:", error);
       throw error;
     });
 }
 
 /**
- * Sends the Base64 image data to the Golang backend and displays the result.
+ * Sends data to the Golang backend and relays the result to the content script.
+ * @param {number} tabId - The ID of the target tab.
+ * @param {string} imageData - The base64 encoded image data.
+ * @param {string} prompt - The prompt to send to the Gemini API.
+ * @param {boolean} isInitialRequest - True if this is the first OCR request, false if it's a re-run.
  */
-function sendImageToBackend(tabId, dataUrl) {
+function sendToBackend(tabId, imageData, prompt, isInitialRequest) {
   const apiEndpoint = "http://localhost:8080/process-image";
 
   fetch(apiEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      image_data: dataUrl,
-      // 💡 Using the imported constant here
-      prompt: GEMINI_PROMPT_TEXT,
+      image_data: imageData,
+      prompt: prompt,
     }),
   })
     .then((response) => {
@@ -80,39 +78,50 @@ function sendImageToBackend(tabId, dataUrl) {
     })
     .then((data) => {
       console.log("Gemini Response Received:", data);
-
-      // Ensure you use the key that your Go backend returns (result_text)
       const resultText =
         data.result_text ||
         data.message ||
         "No recognized code found or processing failed.";
 
-      // Send the result to the display.js content script
-      browser.tabs.sendMessage(tabId, {
-        command: "display_result",
-        text: resultText,
-      });
+      // On the first request, send the full language list for the dropdown.
+      // On subsequent requests, just send the updated code text.
+      if (isInitialRequest) {
+        const langOptions = Object.keys(languages.language_configurations);
+        browser.tabs.sendMessage(tabId, {
+          command: "display_result",
+          text: resultText,
+          languages: langOptions,
+        });
+      } else {
+        browser.tabs.sendMessage(tabId, {
+          command: "update_display",
+          text: resultText,
+        });
+      }
     })
     .catch((error) => {
       console.error("Error sending image to backend:", error);
-      // Display a user-friendly error message in the modal
+      const errorMessage = `[NETWORK ERROR] Failed to connect to local server (http://localhost:8080). Ensure your Go application is running. Details: ${error.message}`;
+      // Send error to the initial display or update the existing one
+      const command = isInitialRequest ? "display_result" : "update_display";
       browser.tabs.sendMessage(tabId, {
-        command: "display_result",
-        text: `[NETWORK ERROR] Failed to connect to local server (http://localhost:8080). Ensure your Go application is running. Details: ${error.message}`,
+        command: command,
+        text: errorMessage,
       });
     });
 }
 
-const activeTabs = new Set();
+// ==========================================================
+// EXTENSION CORE LOGIC
+// ==========================================================
 
 /**
- * V3 Implementation to inject and manage the selection script.
+ * Injects the selection script and manages the selection mode for a given tab.
  */
 function startSelectionMode(tab) {
   const tabId = tab.id;
 
   if (activeTabs.has(tabId)) {
-    // Cancel logic remains mostly the same
     browser.tabs
       .sendMessage(tabId, { command: "cancel_selection" })
       .catch((error) => {
@@ -123,26 +132,20 @@ function startSelectionMode(tab) {
         activeTabs.delete(tabId);
       });
   } else {
-    // Start selection mode (V3 scripting API)
-
-    // 1. Inject the content script (select.js)
     browser.scripting
       .executeScript({
         target: { tabId: tabId },
-        files: ["select.js"], // V3 uses 'files'
+        files: ["select.js"],
       })
       .then(() => {
-        // 2. Set the body cursor for visual feedback (V3 scripting API)
         return browser.scripting.executeScript({
           target: { tabId: tabId },
-          // V3 often prefers 'func' for inline code execution
           func: () => {
             document.body.style.cursor = "crosshair";
           },
         });
       })
       .then(() => {
-        // 3. Add the tab to the active set
         activeTabs.add(tabId);
       })
       .catch((error) => {
@@ -151,41 +154,40 @@ function startSelectionMode(tab) {
   }
 }
 
-// Listener for messages from the content script
+// ==========================================================
+// EVENT LISTENERS
+// ==========================================================
+
+// Listen for messages from content scripts
 browser.runtime.onMessage.addListener((message, sender) => {
   const tabId = sender.tab.id;
 
-  // 1. Always reset the cursor on the tab after receiving a message (V3 scripting API)
-  browser.scripting.executeScript({
-    target: { tabId: tabId },
-    func: () => {
-      document.body.style.cursor = "default";
-    },
-  });
-
-  // 2. Critical: Remove tab from the set when selection is finished or cancelled
+  // Always reset cursor and remove from active set when a selection is made or cancelled
   if (
     message.command === "screenshot_selected_area" ||
     message.command === "selection_cancelled"
   ) {
+    browser.scripting.executeScript({
+      target: { tabId: tabId },
+      func: () => {
+        document.body.style.cursor = "default";
+      },
+    });
     activeTabs.delete(tabId);
   }
 
+  // --- Handle Initial Screenshot ---
   if (message.command === "screenshot_selected_area") {
     const coords = message.coords;
 
-    // 3. Capture the entire visible tab
     browser.tabs
-      .captureVisibleTab(sender.tab.windowId, {
-        format: "png",
-      })
-      .then((dataUrl) => {
-        // 4. Crop the image on the canvas
-        return cropImageOnCanvas(dataUrl, coords);
-      })
+      .captureVisibleTab(sender.tab.windowId, { format: "png" })
+      .then((dataUrl) => cropImageOnCanvas(dataUrl, coords))
       .then((croppedDataUrl) => {
-        // 5. Send the cropped Data URL to your Golang server
-        sendImageToBackend(tabId, croppedDataUrl); // Pass tabId for display later
+        // Store the image data so we can re-run OCR with a different language
+        lastCroppedImageDataByTab[tabId] = croppedDataUrl;
+        // Send to backend for the first time
+        sendToBackend(tabId, croppedDataUrl, GEMINI_PROMPT_TEXT, true);
       })
       .catch((error) => {
         console.error("Error processing screenshot:", error);
@@ -193,12 +195,32 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
     return true; // Indicates asynchronous response
   }
+
+  // --- Handle Re-run OCR with a new language ---
+  if (message.command === "rerun_ocr") {
+    const { newLanguage } = message;
+    const imageData = lastCroppedImageDataByTab[tabId];
+
+    if (imageData && languages.language_configurations[newLanguage]) {
+      const langConfig = languages.language_configurations[newLanguage];
+      const policies = languages.fixed_policies;
+
+      // Construct a new, more detailed prompt for the API
+      const newPrompt = `${policies.code_reconstruction_policy}\n\nVisual Processing Policies:\n- Indentation Inference: ${policies.visual_processing_policy.Indentation_Inference}\n- Line Number Filtering: ${policies.visual_processing_policy.Line_Number_Filtering}\n- Character Ambiguity Resolution Rules: ${JSON.stringify(policies.visual_processing_policy.Character_Ambiguity_Resolution, null, 2)}\n\nTarget Language Details:\n- Language: ${langConfig.target_language}\n- Cheatsheet: ${JSON.stringify(langConfig.language_cheatsheet, null, 2)}\n`;
+
+      // Send to backend for re-analysis
+      sendToBackend(tabId, imageData, newPrompt, false);
+    } else {
+      console.error(`Invalid language or missing image for re-run: ${newLanguage}`);
+    }
+    return true; // Indicates asynchronous response
+  }
 });
 
-// 1. Listen for the user clicking the extension's toolbar icon (V3: browser.action)
+// Listen for toolbar icon click
 browser.action.onClicked.addListener(startSelectionMode);
 
-// 2. LISTEN FOR THE KEYBOARD COMMAND (Alt+C)
+// Listen for keyboard shortcut
 browser.commands.onCommand.addListener((command) => {
   if (command === "toggle-selection-mode") {
     browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
@@ -209,7 +231,8 @@ browser.commands.onCommand.addListener((command) => {
   }
 });
 
-// 3. CLEANUP: Remove tabs from the set when they are closed
+// Cleanup when a tab is closed
 browser.tabs.onRemoved.addListener((tabId) => {
   activeTabs.delete(tabId);
+  delete lastCroppedImageDataByTab[tabId];
 });

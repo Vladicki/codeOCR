@@ -1,5 +1,5 @@
-// --- display.js ---
-
+// --- Global State and Constants ---
+let lastBuffer = { code: null, language: null };
 const UI_ID = "codeocr-result-modal";
 // Extensive language list as requested
 const LANGUAGE_OPTIONS = [
@@ -98,37 +98,31 @@ const LANGUAGE_OPTIONS = [
 // ==========================================================
 
 /**
- * Extracts code and language from a Gemini response formatted with Markdown code blocks.
- * @param {string} markdownText - The raw text from the Gemini API.
- * @returns {{code: string, language: string}}
- */
-
-/**
  * Dynamically loads the Arimo font from Google Fonts.
  */
 function loadArimoFont() {
   if (!document.querySelector('link[href*="Arimo"]')) {
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    // Includes weight 400 and 700
     link.href =
       "https://fonts.googleapis.com/css2?family=Arimo:wght@400;700&display=swap";
     document.head.appendChild(link);
   }
 }
 
+/**
+ * Extracts code and language from a Gemini response formatted with Markdown code blocks.
+ * @param {string} markdownText - The raw text from the Gemini API.
+ * @returns {{code: string, language: string}}
+ */
 function extractCodeFromMarkdown(markdownText) {
-  // Regex to find the first code block (e.g., ```python\n...code...\n```)
-  // (\w+)? captures the language (group 1)
-  // ([\s\S]*?) captures the content (group 2)
   const codeBlockRegex = /```(\w+)?\s*([\s\S]*?)\s*```/;
   const match = markdownText.match(codeBlockRegex);
 
   if (match) {
     const detectedLang = match[1] ? match[1].toLowerCase() : "plain text";
-    const codeContent = match[2].trim(); // Trim whitespace from extracted code
+    const codeContent = match[2].trim();
 
-    // Check if the detected language is in our predefined list, otherwise default
     const language = LANGUAGE_OPTIONS.includes(detectedLang)
       ? detectedLang
       : "plain text";
@@ -136,7 +130,6 @@ function extractCodeFromMarkdown(markdownText) {
     return { code: codeContent, language: language };
   }
 
-  // If no code block is found, return the entire text and 'plain text'
   return { code: markdownText, language: "plain text" };
 }
 
@@ -161,8 +154,6 @@ function makeDraggable(element, handle) {
   function dragMouseDown(e) {
     e = e || window.event;
 
-    // VITAL FIX: Check if the target is within the language search container or the close button.
-    // This ensures the custom dropdown is fully interactive without triggering a drag.
     if (
       e.target.closest("#codeocr-language-search-container") ||
       e.target.id === "codeocr-close"
@@ -171,35 +162,29 @@ function makeDraggable(element, handle) {
     }
 
     e.preventDefault();
-    // Get the mouse cursor position at startup:
     pos3 = e.clientX;
     pos4 = e.clientY;
     document.onmouseup = closeDragElement;
-    // Call a function whenever the cursor moves:
     document.onmousemove = elementDrag;
   }
 
   function elementDrag(e) {
     e = e || window.event;
     e.preventDefault();
-    // Calculate the new cursor position:
     pos1 = pos3 - e.clientX;
     pos2 = pos4 - e.clientY;
     pos3 = e.clientX;
     pos4 = e.clientY;
 
-    // Calculate new top/left positions
     let newTop = element.offsetTop - pos2;
     let newLeft = element.offsetLeft - pos1;
 
-    // Apply new position
     element.style.top = newTop + "px";
     element.style.left = newLeft + "px";
-    element.style.right = "auto"; // Disable right constraint when dragging
+    element.style.right = "auto";
   }
 
   function closeDragElement() {
-    // Stop moving when mouse button is released:
     document.onmouseup = null;
     document.onmousemove = null;
   }
@@ -222,11 +207,9 @@ function makeResizable(element, handle) {
   }
 
   function doDrag(e) {
-    // Calculate new width and height based on mouse movement
     const newWidth = startWidth + e.clientX - startX;
     const newHeight = startHeight + e.clientY - startY;
 
-    // Apply min width/height constraints
     if (newWidth > 300) {
       element.style.width = newWidth + "px";
     }
@@ -242,16 +225,39 @@ function makeResizable(element, handle) {
 }
 
 // ==========================================================
-// MODAL CREATION
+// MODAL CREATION/DISPLAY LOGIC
 // ==========================================================
 
-function createDisplayModal(text) {
-  // 1. Process the incoming text to extract clean code and language
-  const { code, language } = extractCodeFromMarkdown(text);
-  // Load Arimo font for the dropdown before creating the modal
+/**
+ * Creates, populates, and displays the code modal.
+ * If called via message (initial load), it uses rawText to extract code/language.
+ * If called via re-open shortcut, the code and language are pre-cleaned.
+ * @param {string} textOrCode The raw message text OR the clean code from lastBuffer.
+ * @param {string | null} [initialLanguage=null] If provided, bypasses markdown extraction.
+ */
+function createDisplayModal(textOrCode, initialLanguage = null) {
+  // 1. Determine Content and Language
+  let code, language;
+
+  if (initialLanguage) {
+    // Re-opening the last buffer
+    code = textOrCode;
+    language = initialLanguage;
+  } else {
+    // Initial display from a new API response
+    const extracted = extractCodeFromMarkdown(textOrCode);
+    code = extracted.code;
+    language = extracted.language;
+
+    // Save the new buffer immediately
+    lastBuffer.code = code;
+    lastBuffer.language = language;
+  }
+
+  // Load Arimo font for the dropdown
   loadArimoFont();
 
-  // Remove existing modal if present
+  // Remove existing modal if present (and cleanup needed if a shortcut was missed)
   let existingModal = document.getElementById(UI_ID);
   if (existingModal) {
     existingModal.remove();
@@ -263,28 +269,23 @@ function createDisplayModal(text) {
   // --- Initial Styles (Top Right Position) ---
   Object.assign(modal.style, {
     position: "fixed",
-    top: "20px", // Start near the top
-    right: "20px", // Start near the right
-    left: "auto", // Ensure right position is respected
-    transform: "none", // No centering transform
+    top: "20px",
+    right: "20px",
+    left: "auto",
+    transform: "none",
     zIndex: "2147483647",
-
-    // We set flexible sizing initially, and calculate fixed size later
     width: "auto",
     height: "auto",
     minWidth: "300px",
     minHeight: "200px",
-
-    backgroundColor: "#191919", // Dark theme (Notion-like dark code block)
+    backgroundColor: "#191919",
     color: "#f0efed",
     border: "1px solid #30302e",
     borderRadius: "8px",
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.5)",
     display: "flex",
     flexDirection: "column",
-    // UPDATED: Set overflow to visible so the dropdown list is not clipped by the modal.
     overflow: "visible",
-    // NEW: Apple/Notion-like font family for a cleaner look.
     fontFamily:
       "'-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'",
   });
@@ -306,15 +307,15 @@ function createDisplayModal(text) {
                 <!-- START: Custom Searchable Dropdown UI -->
                 <div id="codeocr-language-search-container" style="
                     position: relative; 
-                    width: 200px; /* Twice wider as requested */
-                    font-family: 'Arimo', sans-serif; /* APPLY ARIMO TO DROPDOWN */
+                    width: 200px; 
+                    font-family: 'Arimo', sans-serif; 
                 ">
                     <div id="codeocr-visible-selection" style="
                         padding: 4px 8px; 
-                        border-radius: 6px; /* NEW: Rounded corners */
-                        background-color: #4a4a4a; /* NEW: Lighter grey for selection */
+                        border-radius: 6px; 
+                        background-color: #4a4a4a; 
                         color: white; 
-                        border: 1px solid #4a4a4a; /* Adjusted border to match background */
+                        border: 1px solid #4a4a4a; 
                         font-size: 1.1em; 
                         cursor: pointer; 
                         display: flex; 
@@ -332,11 +333,11 @@ function createDisplayModal(text) {
                         top: 100%; 
                         left: 0; 
                         width: 100%; 
-                        background-color: #3a3a3a; /* NEW: Different grey shade for dropdown list */
-                        border: none; /* NEW: No border */
+                        background-color: #3a3a3a; 
+                        border: none; 
                         border-top: none; 
                         z-index: 2147483648; 
-                        max-height: 40vh; /* Limited height for the dropdown list */
+                        max-height: 40vh; 
                         overflow-y: auto; 
                         border-radius: 0 0 4px 4px;
                         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -345,14 +346,14 @@ function createDisplayModal(text) {
                             width: 100%; 
                             padding: 8px; 
                             box-sizing: border-box; 
-                            background-color: #252525; /* NEW: Darker grey for search input */
+                            background-color: #252525; 
                             color: white; 
-                            border: 1px solid #2d2d2d; /* NEW: Border to match background */
-                            border-radius: 0; /* Ensures clean transition to options list */
+                            border: 1px solid #2d2d2d; 
+                            border-radius: 0; 
                             font-size: 1.3em;
                             margin: 0;
                             outline: none;
-                            font-family: 'Arimo', sans-serif; /* Explicitly set Arimo */
+                            font-family: 'Arimo', sans-serif; 
                         ">
                         <ul id="codeocr-options-list" style="
                             list-style: none; 
@@ -369,7 +370,7 @@ function createDisplayModal(text) {
                                     text-transform: capitalize;
                                     transition: background-color 0.1s;
                                     " onmouseover="this.style.backgroundColor='#2f2f2f'" onmouseout="this.style.backgroundColor='transparent'">
-                                    ${lang.charAt(0).toUpperCase() + lang.slice(1)}   </li>`,
+                                    ${lang.charAt(0).toUpperCase() + lang.slice(1)}    </li>`,
                             ).join("")}
                         </ul>
                     </div>
@@ -398,7 +399,7 @@ function createDisplayModal(text) {
                 overflow: auto; 
                 white-space: pre-wrap;
                 font-family: 'Consolas', monospace;
-                font-size: 2rem; /* Requested font size */
+                font-size: 2rem; 
                 line-height: 1.4;
                 caret-color: white;
                 outline: none; 
@@ -415,7 +416,7 @@ function createDisplayModal(text) {
             cursor: pointer; 
             font-size: 1em;
             transition: background-color 0.2s;
-        ">Copy Code</button>
+        ">Copy (Alt+Enter)</button>
 
         <div id="codeocr-resize-handle" style="
             position: absolute;
@@ -436,7 +437,7 @@ function createDisplayModal(text) {
   const closeBtn = document.getElementById("codeocr-close");
   const resizeHandle = document.getElementById("codeocr-resize-handle");
 
-  // New Search Component Elements
+  // Search Component Elements
   const searchContainer = document.getElementById(
     "codeocr-language-search-container",
   );
@@ -455,17 +456,17 @@ function createDisplayModal(text) {
   let currentLanguage = language;
   selectedLabel.textContent = capitalize(currentLanguage);
 
-  // 2. Insert the clean code
+  // 2. Insert the code content
   outputEditor.textContent = code;
 
-  // --- Dynamic Height Adaptation (Post-content insertion) ---
-  const paddingHeight = 15 + 15; // Top/bottom padding of editor
+  // --- Dynamic Sizing ---
+  const paddingHeight = 15 + 15;
   const totalContentHeight =
     outputEditor.scrollHeight +
     header.offsetHeight +
     copyBtn.offsetHeight +
     paddingHeight;
-  const totalContentWidth = outputEditor.scrollWidth + 40; // Approx padding/margin for width
+  const totalContentWidth = outputEditor.scrollWidth + 40;
 
   const calculatedHeight = Math.min(
     totalContentHeight,
@@ -473,66 +474,80 @@ function createDisplayModal(text) {
   );
   const calculatedWidth = Math.min(totalContentWidth, window.innerWidth * 0.8);
 
-  modal.style.height = `${calculatedHeight}px`;
-  modal.style.width = `${calculatedWidth}px`;
   modal.style.height = `${Math.max(calculatedHeight, 200)}px`;
   modal.style.width = `${Math.max(calculatedWidth, 300)}px`;
 
-  // --- Attach Interactions ---
+  // --- Core Interactions ---
 
   makeDraggable(modal, header);
   makeResizable(modal, resizeHandle);
-  closeBtn.addEventListener("click", () => modal.remove());
 
-  // Search/Dropdown Logic
+  // Function to handle modal closing and cleanup
+  const closeModal = () => {
+    // IMPORTANT: Before removing the modal, save the current edited content
+    // and the currently selected language to the lastBuffer.
+    lastBuffer.code = outputEditor.textContent;
+    lastBuffer.language = currentLanguage;
 
-  // Toggle list visibility on clicking the visible label
+    modal.remove();
+    // The global listener remains attached, so no need to remove/re-add it here.
+  };
+
+  closeBtn.addEventListener("click", closeModal);
+
+  // 5. Hover Dimming for Copy Button
+  const DEFAULT_COPY_COLOR = "#007acc";
+  const DIMMED_COPY_COLOR = "#005a99"; // Darker shade for "dimmed" effect
+  const COPIED_FEEDBACK_COLOR = "#00a878";
+
+  copyBtn.addEventListener("mouseover", () => {
+    if (copyBtn.textContent.startsWith("Copy Code")) {
+      copyBtn.style.backgroundColor = DIMMED_COPY_COLOR;
+    }
+  });
+
+  copyBtn.addEventListener("mouseout", () => {
+    if (copyBtn.textContent.startsWith("Copy Code")) {
+      copyBtn.style.backgroundColor = DEFAULT_COPY_COLOR;
+    }
+  });
+
+  // Search/Dropdown Logic (Omitted for brevity, assumed correct from prior step)
+  // ... (Dropdown logic remains the same) ...
+
   visibleSelection.addEventListener("click", (e) => {
-    // Stop event propagation to document's click listener to prevent immediate closing
     e.stopPropagation();
     const isVisible = languageList.style.display === "block";
     languageList.style.display = isVisible ? "none" : "block";
     if (!isVisible) {
-      // Focus on search input when opened
       searchInput.focus();
     } else {
-      // If closing, clear search
       searchInput.value = "";
-      // Restore all options
       Array.from(optionsList.children).forEach(
         (li) => (li.style.display = "block"),
       );
     }
   });
 
-  // Filter options based on search input
   searchInput.addEventListener("input", (e) => {
     const query = e.target.value.toLowerCase();
     Array.from(optionsList.children).forEach((li) => {
       const langName = li.getAttribute("data-value");
-      if (langName.includes(query)) {
-        li.style.display = "block";
-      } else {
-        li.style.display = "none";
-      }
+      li.style.display = langName.includes(query) ? "block" : "none";
     });
   });
 
-  // Handle selection from the list
   optionsList.addEventListener("click", (e) => {
     const listItem = e.target.closest("li");
     if (listItem) {
       currentLanguage = listItem.getAttribute("data-value");
       selectedLabel.textContent = capitalize(currentLanguage);
-      languageList.style.display = "none"; // Close list
-      searchInput.value = ""; // Clear search
-      // Optional: You could send a message to the background script here to notify of language change
+      languageList.style.display = "none";
+      searchInput.value = "";
     }
   });
 
-  // Close the list if user clicks outside the search container
   document.addEventListener("click", (e) => {
-    // Check if the click occurred outside the container AND if the list is visible
     if (
       !searchContainer.contains(e.target) &&
       languageList.style.display === "block"
@@ -541,7 +556,7 @@ function createDisplayModal(text) {
     }
   });
 
-  // 3. Copy Logic: Copies the content of the editable div (which is the clean code)
+  // 3. Copy Logic: Copies the content and schedules close
   copyBtn.addEventListener("click", () => {
     const contentToCopy = outputEditor.textContent;
 
@@ -557,31 +572,68 @@ function createDisplayModal(text) {
       document.execCommand("copy");
       selection.removeAllRanges();
 
-      // Temporary feedback style
-      copyBtn.style.backgroundColor = "#00a878";
-      copyBtn.textContent = "Copied!";
+      // IMPORTANT: Save the *current* state of the editor before closing
+      lastBuffer.code = contentToCopy;
+      lastBuffer.language = currentLanguage;
 
-      // Revert after timeout, also ensures the mouseout listener doesn't immediately overwrite feedback
+      // Temporary feedback style and message update
+      copyBtn.style.backgroundColor = COPIED_FEEDBACK_COLOR;
+      copyBtn.textContent = "Copied! Closing...";
+
       setTimeout(() => {
-        copyBtn.textContent = "Copy Code";
-        copyBtn.style.backgroundColor = copyBtn.matches(":hover")
-          ? "#0064a3"
-          : "#007acc";
-      }, 1500);
+        closeModal();
+      }, 700);
     } catch (err) {
       console.error("Failed to copy text using execCommand:", err);
       // Fallback for user feedback
       copyBtn.textContent = "Copy Failed! (Check Console)";
+      // Revert in 1.5s
       setTimeout(() => {
-        copyBtn.textContent = "Copy Code";
+        copyBtn.textContent = "Copy Code (Alt+Enter)";
+        copyBtn.style.backgroundColor = DEFAULT_COPY_COLOR;
       }, 1500);
     }
   });
 }
 
+// ==========================================================
+// GLOBAL KEYBOARD LISTENER (PERSISTENT)
+// ==========================================================
+
+// This function is attached once and controls all keyboard shortcuts
+function handleGlobalKeyDown(e) {
+  const modal = document.getElementById(UI_ID);
+
+  // Alt + Enter: Handles Copy (when open) OR Re-open (when closed)
+  if (e.altKey && e.key === "Enter") {
+    e.preventDefault();
+
+    if (modal) {
+      // MODAL IS OPEN: Trigger Copy Action (which schedules a close)
+      document.getElementById("codeocr-copy")?.click();
+    } else {
+      // MODAL IS CLOSED: Re-open the last buffer
+      if (lastBuffer.code !== null) {
+        createDisplayModal(lastBuffer.code, lastBuffer.language);
+      }
+    }
+    return;
+  }
+
+  // Escape: Handles Close (only when open)
+  if (modal && e.key === "Escape") {
+    e.preventDefault();
+    document.getElementById("codeocr-close")?.click();
+  }
+}
+
+// Attach the persistent global listener once when the content script loads
+document.addEventListener("keydown", handleGlobalKeyDown);
+
 // Main logic: Listen for the display command from background.js
 browser.runtime.onMessage.addListener((message) => {
   if (message.command === "display_result" && message.text) {
+    // Initial display from API response, markdown extraction is required
     createDisplayModal(message.text);
     return true;
   }

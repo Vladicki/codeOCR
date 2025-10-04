@@ -9,7 +9,7 @@ const activeTabs = new Set();
 let lastCroppedImageDataByTab = {}; // Store image data by tab ID
 
 // ==========================================================
-// IMAGE AND API HANDLING
+// HELPER FUNCTIONS
 // ==========================================================
 
 function cropImageOnCanvas(dataUrl, coords) {
@@ -29,44 +29,36 @@ function cropImageOnCanvas(dataUrl, coords) {
         reader.readAsDataURL(croppedBlob);
       });
     })
-    .catch((error) => {
-      console.error("Cropping failed:", error);
-      throw error;
-    });
+    .catch((error) => { console.error("Cropping failed:", error); throw error; });
 }
 
 function sendToBackend(tabId, imageData, prompt) {
   const apiEndpoint = "http://localhost:8080/process-image";
-
   fetch(apiEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_data: imageData, prompt: prompt }),
   })
-    .then((response) => {
-      if (!response.ok) {
-        return response.text().then((text) => { throw new Error(`HTTP error! Status: ${response.status}. Message: ${text}`); });
-      }
+    .then(response => {
+      if (!response.ok) return response.text().then(text => { throw new Error(`HTTP error! Status: ${response.status}. Message: ${text}`); });
       return response.json();
     })
-    .then((data) => {
-      console.log("Gemini Response Received:", data);
-      const resultText = data.result_text || data.message || "No recognized code found or processing failed.";
-      // The modal is already open, so we always just update it.
-      browser.tabs.sendMessage(tabId, {
-        command: "update_display",
-        text: resultText,
-      });
+    .then(data => {
+      const resultText = data.result_text || data.message || "Processing failed.";
+      browser.tabs.sendMessage(tabId, { command: "update_display", text: resultText });
     })
-    .catch((error) => {
-      console.error("Error sending image to backend:", error);
-      const errorMessage = `[NETWORK ERROR] Failed to connect to local server (http://localhost:8080). Details: ${error.message}`;
-      // The modal is already open, so we always just update it.
-      browser.tabs.sendMessage(tabId, {
-        command: "update_display",
-        text: errorMessage,
-      });
+    .catch(error => {
+      const errorMessage = `[NETWORK ERROR] Failed to connect to backend. Details: ${error.message}`;
+      browser.tabs.sendMessage(tabId, { command: "update_display", text: errorMessage });
     });
+}
+
+function constructPromptForLanguage(language) {
+    const langConfig = languages.language_configurations[language];
+    if (!langConfig) return GEMINI_PROMPT_TEXT; // Fallback
+
+    const policies = languages.fixed_policies;
+    return `${policies.code_reconstruction_policy}\n\nVisual Processing Policies:\n- Indentation Inference: ${policies.visual_processing_policy.Indentation_Inference}\n- Line Number Filtering: ${policies.visual_processing_policy.Line_Number_Filtering}\n- Character Ambiguity Resolution Rules: ${JSON.stringify(policies.visual_processing_policy.Character_Ambiguity_Resolution, null, 2)}\n\nTarget Language Details:\n- Language: ${langConfig.target_language}\n- Cheatsheet: ${JSON.stringify(langConfig.language_cheatsheet, null, 2)}\n`;
 }
 
 // ==========================================================
@@ -76,10 +68,7 @@ function sendToBackend(tabId, imageData, prompt) {
 function startSelectionMode(tab) {
   const tabId = tab.id;
   if (activeTabs.has(tabId)) {
-    browser.tabs.sendMessage(tabId, { command: "cancel_selection" }).catch((error) => {
-      console.warn("Could not send cancel message, force-removing from activeTabs.", error);
-      activeTabs.delete(tabId);
-    });
+    browser.tabs.sendMessage(tabId, { command: "cancel_selection" }).catch(() => activeTabs.delete(tabId));
   } else {
     browser.scripting.executeScript({ target: { tabId: tabId }, files: ["select.js"] })
       .then(() => browser.scripting.executeScript({ target: { tabId: tabId }, func: () => { document.body.style.cursor = "crosshair"; } }))
@@ -100,55 +89,47 @@ browser.runtime.onMessage.addListener((message, sender) => {
     activeTabs.delete(tabId);
   }
 
-  // --- Handle Initial Screenshot ---
   if (message.command === "screenshot_selected_area") {
     const coords = message.coords;
 
-    // Immediately show the modal with a loading state
     const langOptions = Object.keys(languages.language_configurations);
-    browser.tabs.sendMessage(tabId, {
-      command: "show_loading_modal",
-      languages: langOptions,
-    });
+    browser.tabs.sendMessage(tabId, { command: "show_loading_modal", languages: langOptions });
 
     browser.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" })
-      .then((dataUrl) => cropImageOnCanvas(dataUrl, coords))
-      .then((croppedDataUrl) => {
+      .then(dataUrl => cropImageOnCanvas(dataUrl, coords))
+      .then(async (croppedDataUrl) => {
         lastCroppedImageDataByTab[tabId] = croppedDataUrl;
-        sendToBackend(tabId, croppedDataUrl, GEMINI_PROMPT_TEXT);
+        
+        const settings = await browser.storage.local.get("codeocr_lang_preset");
+        const langPreset = settings.codeocr_lang_preset;
+
+        let prompt = GEMINI_PROMPT_TEXT;
+        if (langPreset && langPreset !== "default") {
+            prompt = constructPromptForLanguage(langPreset);
+        }
+
+        sendToBackend(tabId, croppedDataUrl, prompt);
       })
-      .catch((error) => {
-        console.error("Error processing screenshot:", error);
-        browser.tabs.sendMessage(tabId, {
-          command: "update_display",
-          text: `[ERROR] Failed to process screenshot: ${error.message}`,
-        });
+      .catch(error => {
+        browser.tabs.sendMessage(tabId, { command: "update_display", text: `[ERROR] Failed to process screenshot: ${error.message}` });
       });
 
     return true; // Indicates asynchronous response
   }
 
-  // --- Handle Re-run OCR with a new language ---
   if (message.command === "rerun_ocr") {
     const { newLanguage } = message;
     const imageData = lastCroppedImageDataByTab[tabId];
-
-    if (imageData && languages.language_configurations[newLanguage]) {
-      const langConfig = languages.language_configurations[newLanguage];
-      const policies = languages.fixed_policies;
-      const newPrompt = `${policies.code_reconstruction_policy}\n\nVisual Processing Policies:\n- Indentation Inference: ${policies.visual_processing_policy.Indentation_Inference}\n- Line Number Filtering: ${policies.visual_processing_policy.Line_Number_Filtering}\n- Character Ambiguity Resolution Rules: ${JSON.stringify(policies.visual_processing_policy.Character_Ambiguity_Resolution, null, 2)}\n\nTarget Language Details:\n- Language: ${langConfig.target_language}\n- Cheatsheet: ${JSON.stringify(langConfig.language_cheatsheet, null, 2)}\n`;
-      sendToBackend(tabId, imageData, newPrompt);
-    } else {
-      console.error(`Invalid language or missing image for re-run: ${newLanguage}`);
-    }
-    return true; // Indicates asynchronous response
+    if (imageData) {
+      const prompt = constructPromptForLanguage(newLanguage);
+      sendToBackend(tabId, imageData, prompt);
+    } 
+    return true;
   }
 });
 
-// Listen for toolbar icon click
 browser.action.onClicked.addListener(startSelectionMode);
 
-// Listen for keyboard shortcut
 browser.commands.onCommand.addListener((command) => {
   if (command === "toggle-selection-mode") {
     browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
@@ -157,7 +138,6 @@ browser.commands.onCommand.addListener((command) => {
   }
 });
 
-// Cleanup when a tab is closed
 browser.tabs.onRemoved.addListener((tabId) => {
   activeTabs.delete(tabId);
   delete lastCroppedImageDataByTab[tabId];

@@ -3,6 +3,7 @@
 // 💡 IMPORT: Import from external modules
 import { GEMINI_PROMPT_TEXT } from "./prompt.js";
 import { languages } from "./languages.js";
+import { lang } from "./langs.js";
 
 // --- Global State ---
 const activeTabs = new Set();
@@ -93,7 +94,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     const coords = message.coords;
 
     const langOptions = Object.keys(languages.language_configurations);
-    browser.tabs.sendMessage(tabId, { command: "show_loading_modal", languages: langOptions });
+    browser.tabs.sendMessage(tabId, { command: "show_loading_modal", languages: langOptions, allLangs: lang });
 
     browser.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" })
       .then(dataUrl => cropImageOnCanvas(dataUrl, coords))
@@ -106,6 +107,19 @@ browser.runtime.onMessage.addListener((message, sender) => {
         let prompt = GEMINI_PROMPT_TEXT;
         if (langPreset && langPreset !== "default") {
             prompt = constructPromptForLanguage(langPreset);
+        }
+
+        // Retrieve selected languages from storage
+        const selectedLangsResult = await browser.storage.local.get("selectedLanguages");
+        const selectedLanguages = selectedLangsResult.selectedLanguages || [];
+
+        if (selectedLanguages.length > 0) {
+            const langInfo = selectedLanguages.map(l => ({
+                index: l.index,
+                name: l.name,
+                id: l.id
+            }));
+            prompt += `\n\nUser's potential languages: ${JSON.stringify(langInfo)}`;
         }
 
         sendToBackend(tabId, croppedDataUrl, prompt);

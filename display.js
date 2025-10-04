@@ -4,6 +4,7 @@ const UI_ID = "codeocr-result-modal";
 let availableLanguages = [];
 let currentLanguage; // Holds the language selected in the dropdown
 let userFontSize = 2; // Default font size in rem
+let selectedPossibleLanguages = []; // New: To store selected languages from checkboxes
 
 const spinner = {
   interval: 80,
@@ -89,6 +90,81 @@ function renderLanguageList() {
   }
 }
 
+async function renderPossibleLanguagesCheckboxes(allLangsData) {
+    const checkboxesDiv = document.getElementById("codeocr-possible-languages-checkboxes");
+    const selectedLabel = document.getElementById("codeocr-possible-languages-selected-label");
+    if (!checkboxesDiv || !selectedLabel) return;
+
+    const result = await browser.storage.local.get(['selectedLanguages']);
+    selectedPossibleLanguages = result.selectedLanguages || [];
+
+    checkboxesDiv.innerHTML = '';
+
+    allLangsData.forEach((language, index) => {
+        const div = document.createElement('div');
+        div.classList.add('language-item');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `possible-lang-${language.id}`;
+        checkbox.value = language.id;
+        checkbox.dataset.langIndex = index;
+        checkbox.dataset.langName = language.name;
+        checkbox.dataset.langNative = language.native;
+
+        if (selectedPossibleLanguages.some(sl => sl.id === language.id)) {
+            checkbox.checked = true;
+        }
+
+        checkbox.addEventListener('change', (event) => {
+            togglePossibleLanguageSelection(language, index, event.target.checked);
+            updatePossibleLanguagesSelectedLabel();
+        });
+
+        const label = document.createElement('label');
+        label.htmlFor = `possible-lang-${language.id}`;
+        label.textContent = language.native;
+        label.style.fontSize = "1.1em";
+        label.style.marginLeft = "5px";
+
+        div.appendChild(checkbox);
+        div.appendChild(label);
+        checkboxesDiv.appendChild(div);
+    });
+    updatePossibleLanguagesSelectedLabel();
+}
+
+function updatePossibleLanguagesSelectedLabel() {
+    const selectedLabel = document.getElementById("codeocr-possible-languages-selected-label");
+    if (!selectedLabel) return;
+
+    if (selectedPossibleLanguages.length === 0) {
+        selectedLabel.textContent = "Select languages...";
+    } else {
+        selectedLabel.textContent = selectedPossibleLanguages.map(l => l.name).join(", ");
+    }
+}
+
+function togglePossibleLanguageSelection(language, index, isChecked) {
+    const existingIndex = selectedPossibleLanguages.findIndex(sl => sl.id === language.id);
+
+    if (isChecked) {
+        if (existingIndex === -1) {
+            selectedPossibleLanguages.push({
+                index: index,
+                name: language.name,
+                id: language.id,
+                native: language.native
+            });
+        }
+    } else {
+        if (existingIndex > -1) {
+            selectedPossibleLanguages.splice(existingIndex, 1);
+        }
+    }
+    browser.storage.local.set({ selectedLanguages: selectedPossibleLanguages });
+}
+
 // ==========================================================
 // DRAGGABLE AND RESIZABLE LOGIC (Omitted for brevity)
 // ==========================================================
@@ -164,7 +240,7 @@ function makeResizable(element, handle) {
 // MODAL CREATION/DISPLAY LOGIC
 // ==========================================================
 
-async function createDisplayModal(textOrCode, initialLanguage = null) {
+async function createDisplayModal(textOrCode, initialLanguage = null, allLangsData = []) {
   const isLoading = textOrCode === ". . .";
   let code = textOrCode;
   let language = initialLanguage;
@@ -235,12 +311,24 @@ async function createDisplayModal(textOrCode, initialLanguage = null) {
         <h3 style="margin-top: 0; color: #00b4ff; font-size: 0.8em;">Settings</h3>
         <div class="setting-item" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px; font-size: 0.7em;">
             <label for="font-size-input">Font Size (rem):</label>
-            <input type="number" id="font-size-input" min="0.5" max="5" step="0.1" value="${userFontSize}" style="width: 60px; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; padding: 4px; font-size: 1em;">
+            <input type="number" id="font-size-input" min="0.5" max="5" step="0.1" value="${userFontSize}" style="width: 40px; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; padding: 4px; font-size: 1em; -moz-appearance: textfield; appearance: textfield; outline: none; border-color: white; border-radius: 2px;" onfocus="this.style.borderColor='white'" onblur="this.style.borderColor='#4a4a4a'">
         </div>
         <div class="setting-item" style="margin-bottom: 15px; font-size: 0.7em;">
             <label for="lang-preset-select" style="display: block; margin-bottom: 5px;">Default Language Preset</label>
-            <select id="lang-preset-select" style="width: 100%; padding: 5px; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; font-size: 1em;">
+            <select id="lang-preset-select" style="width: 100%; padding: 5px; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; font-size: 1em; border-radius: 2px;">
             </select>
+        </div>
+        <div class="setting-item" style="margin-bottom: 15px; font-size: 0.7em;">
+            <label style="display: block; margin-bottom: 5px;">Native Languages:</label>
+            <div id="codeocr-possible-languages-search-container" style="position: relative;">
+                <div id="codeocr-possible-languages-visible-selection" style="padding: 5px; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; font-size: 1em; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 2px;">
+                    <span id="codeocr-possible-languages-selected-label">Select languages...</span>
+                    <span style="font-size: 0.7em;">▼</span>
+                </div>
+                <div id="codeocr-possible-languages-dropdown-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background-color: #3a3a3a; border: 1px solid #4a4a4a; z-index: 10; max-height: 150px; overflow-y: auto; border-radius: 0 0 4px 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);">
+                    <div id="codeocr-possible-languages-checkboxes" style="padding: 5px;"></div>
+                </div>
+            </div>
         </div>
         <div class="setting-item" style="font-size: 0.6em;">
             <h4 style="margin-bottom: 5px; color: #00b4ff;">Shortcuts</h4>
@@ -255,6 +343,7 @@ async function createDisplayModal(textOrCode, initialLanguage = null) {
 
   document.body.appendChild(modal);
   renderLanguageList();
+  renderPossibleLanguagesCheckboxes(allLangsData); // Call the new function here
 
   const outputEditor = document.getElementById("codeocr-output-editor");
   const header = document.getElementById("codeocr-header");
@@ -362,7 +451,24 @@ async function createDisplayModal(textOrCode, initialLanguage = null) {
       mainLanguageList.style.display = "none";
     if (!settingsBtn.contains(e.target) && !settingsPanel.contains(e.target))
       settingsPanel.style.display = "none";
+    
+    const possibleLangsSearchContainer = document.getElementById("codeocr-possible-languages-search-container");
+    const possibleLangsDropdownList = document.getElementById("codeocr-possible-languages-dropdown-list");
+    if (possibleLangsSearchContainer && possibleLangsDropdownList && !possibleLangsSearchContainer.contains(e.target)) {
+        possibleLangsDropdownList.style.display = "none";
+    }
   });
+
+  // --- Possible Languages Dropdown Logic ---
+  const possibleLangsVisibleSelection = document.getElementById("codeocr-possible-languages-visible-selection");
+  const possibleLangsDropdownList = document.getElementById("codeocr-possible-languages-dropdown-list");
+
+  if (possibleLangsVisibleSelection && possibleLangsDropdownList) {
+      possibleLangsVisibleSelection.addEventListener("click", (e) => {
+          e.stopPropagation();
+          possibleLangsDropdownList.style.display = possibleLangsDropdownList.style.display === "block" ? "none" : "block";
+      });
+  }
 
   // --- Copy Logic ---
   copyBtn.addEventListener("click", () => {
@@ -411,7 +517,7 @@ browser.runtime.onMessage.addListener((message) => {
     if (message.languages) {
         availableLanguages = message.languages;
     }
-    createDisplayModal(". . .", "plain text");
+    createDisplayModal(". . .", "plain text", message.allLangs);
     return true;
   } else if (message.command === "update_display" && message.text) {
     const outputEditor = document.getElementById("codeocr-output-editor");

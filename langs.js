@@ -1,10 +1,5 @@
 export const lang = [
   {
-    name: "English",
-    id: "en",
-    native: "English",
-  },
-  {
     name: "Mandarin Chinese",
     id: "zh",
     native: "官话",

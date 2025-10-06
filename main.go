@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 // Global variable MUST be here to store the bytes for the debug endpoint
@@ -53,9 +55,20 @@ type RequestPayload struct {
 
 func main() {
 	// Check for API Key before starting the server
+	err := godotenv.Load()
+	if err != nil {
+		log.Println(
+			"Warning: Could not find or load .env file. Proceeding with system environment variables",
+		)
+	}
+
+	// 2. Your existing check now runs *after* the .env file has been loaded
 	if os.Getenv("GEMINI_API_KEY") == "" {
 		log.Fatal("FATAL: GEMINI_API_KEY environment variable not set. Cannot run server.")
 	}
+
+	// ... rest of your server startup logic
+	log.Println("Server starting successfully! API Key is set.")
 
 	http.HandleFunc("/process-image", processImageHandler)
 	http.HandleFunc("/debug-last-image", debugLastImageHandler)

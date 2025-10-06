@@ -1,20 +1,10 @@
-# codeOCR: Advanced OCR for Code Snippets
-
----
+# codeOCR:  OCR for Code Snippets
 
 ## Project Overview
 
 codeOCR is an open-source image recognition utility designed to be highly accurate in recognizing and parsing code from images. It excels where traditional OCR tools falter, boasting up to 90% higher accuracy in identifying programming languages and preserving the original structure, indentation, and syntax of code snippets.
 
 This tool is implemented as a browser extension with a powerful Go backend, providing a seamless experience for developers to extract code from screenshots, online tutorials, or any image source directly within their browser.
-
----
-
-## Collaboration & Development
-
-This project is managed using **Git** for version control.
-
----
 
 ## Skills & Technologies Highlighted
 

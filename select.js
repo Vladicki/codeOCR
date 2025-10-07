@@ -6,6 +6,10 @@
   let isSelecting = false;
   let activePointerId = null;
 
+  // New Guide elements
+  let guideH = null;
+  let guideV = null;
+
   // Start coords (page/document coords include scroll)
   let startPageX = 0,
     startPageY = 0;
@@ -41,18 +45,64 @@
       borderRadius: "4px",
     });
 
+    // --- NEW GUIDE LINES ---
+    const guideStyle = {
+      position: "fixed",
+      pointerEvents: "none",
+      backgroundColor: "rgba(184, 12, 20, 0.7)", // Same color as border
+      opacity: "0.8",
+      display: "none", // Hidden until selection starts
+    };
+
+    guideH = document.createElement("div");
+    guideH.id = "codeocr-guide-h";
+    Object.assign(guideH.style, guideStyle, {
+      height: "1px",
+      width: "100%",
+    });
+
+    guideV = document.createElement("div");
+    guideV.id = "codeocr-guide-v";
+    Object.assign(guideV.style, guideStyle, {
+      width: "1px",
+      height: "100%",
+    });
+    // --- END NEW GUIDE LINES ---
+
     overlay.appendChild(selection);
+    overlay.appendChild(guideH); // Add guides to the overlay
+    overlay.appendChild(guideV);
     document.documentElement.appendChild(overlay);
 
     // pointer events (works for mouse, touch, pen)
     overlay.addEventListener("pointerdown", onPointerDown, { passive: false });
+    // Listen to move on window to track the pointer even before selection starts
+    window.addEventListener("pointermove", onPointerMoveGlobal, {
+      passive: false,
+    });
     overlay.addEventListener("pointermove", onPointerMove, { passive: false });
+
     // pointerup/listen on window to ensure we catch it even if pointer leaves overlay
     window.addEventListener("pointerup", onPointerUp, { passive: false });
     window.addEventListener("pointercancel", onPointerCancel, {
       passive: false,
     });
     window.addEventListener("keydown", onKeyDown);
+  }
+
+  // Global move handler to update guides even when selection hasn't started
+  function onPointerMoveGlobal(e) {
+    if (overlay) {
+      // Update guide position based on current client coordinates
+      guideH.style.top = `${e.clientY}px`;
+      guideV.style.left = `${e.clientX}px`;
+
+      // Only show guides when the overlay is active and no selection is happening
+      if (!isSelecting) {
+        guideH.style.display = "block";
+        guideV.style.display = "block";
+      }
+    }
   }
 
   function onPointerDown(e) {
@@ -69,6 +119,10 @@
     }
 
     isSelecting = true;
+
+    // Hide guide lines once selection starts
+    guideH.style.display = "none";
+    guideV.style.display = "none";
 
     // store start coords: page coords include scroll (good for final)
     startPageX = e.pageX;
@@ -212,6 +266,11 @@
   }
 
   function cleanup() {
+    // Remove global listener
+    try {
+      window.removeEventListener("pointermove", onPointerMoveGlobal);
+    } catch (e) {}
+
     try {
       overlay?.removeEventListener("pointerdown", onPointerDown);
     } catch (e) {}
@@ -242,6 +301,8 @@
     selection = null;
     isSelecting = false;
     activePointerId = null;
+    guideH = null; // Clear references
+    guideV = null;
   }
 
   browser.runtime.onMessage.addListener((message) => {

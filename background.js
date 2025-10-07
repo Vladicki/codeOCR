@@ -20,7 +20,17 @@ function cropImageOnCanvas(dataUrl, coords) {
     .then((imageBitmap) => {
       const canvas = new OffscreenCanvas(coords.width, coords.height);
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(imageBitmap, coords.x, coords.y, coords.width, coords.height, 0, 0, coords.width, coords.height);
+      ctx.drawImage(
+        imageBitmap,
+        coords.x,
+        coords.y,
+        coords.width,
+        coords.height,
+        0,
+        0,
+        coords.width,
+        coords.height,
+      );
       return canvas.convertToBlob({ type: "image/png" });
     })
     .then((croppedBlob) => {
@@ -30,36 +40,56 @@ function cropImageOnCanvas(dataUrl, coords) {
         reader.readAsDataURL(croppedBlob);
       });
     })
-    .catch((error) => { console.error("Cropping failed:", error); throw error; });
+    .catch((error) => {
+      console.error("Cropping failed:", error);
+      throw error;
+    });
 }
 
 function sendToBackend(tabId, imageData, prompt) {
-  const apiEndpoint = "http://localhost:8080/process-image";
+  // Local ENDPOINT
+  //const apiEndpoint = "http://localhost:8080/process-image";
+  // set server API endpoint to your deployed domain
+  const apiEndpoint = "https://codeocr.vladika.net/process-image";
+
   fetch(apiEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_data: imageData, prompt: prompt }),
   })
-    .then(response => {
-      if (!response.ok) return response.text().then(text => { throw new Error(`HTTP error! Status: ${response.status}. Message: ${text}`); });
+    .then((response) => {
+      if (!response.ok)
+        return response.text().then((text) => {
+          throw new Error(
+            `HTTP error! Status: ${response.status}. Message: ${text}`,
+          );
+        });
       return response.json();
     })
-    .then(data => {
-      const resultText = data.result_text || data.message || "Processing failed.";
-      browser.tabs.sendMessage(tabId, { command: "update_display", text: resultText });
+    .then((data) => {
+      const resultText =
+        data.result_text || data.message || "Processing failed.";
+      browser.tabs.sendMessage(tabId, {
+        command: "update_display",
+        text: resultText,
+      });
     })
-    .catch(error => {
-      const errorMessage = `[NETWORK ERROR] Failed to connect to backend. Details: ${error.message}`;
-      browser.tabs.sendMessage(tabId, { command: "update_display", text: errorMessage });
+    .catch((error) => {
+      // Improved error message to guide the user
+      const errorMessage = `[NETWORK ERROR] Failed to connect to proxy server (${apiEndpoint}). Check server status or CORS settings. Details: ${error.message}`;
+      browser.tabs.sendMessage(tabId, {
+        command: "update_display",
+        text: errorMessage,
+      });
     });
 }
 
 function constructPromptForLanguage(language) {
-    const langConfig = languages.language_configurations[language];
-    if (!langConfig) return GEMINI_PROMPT_TEXT; // Fallback
+  const langConfig = languages.language_configurations[language];
+  if (!langConfig) return GEMINI_PROMPT_TEXT; // Fallback
 
-    const policies = languages.fixed_policies;
-    return `${policies.code_reconstruction_policy}\n\nVisual Processing Policies:\n- Indentation Inference: ${policies.visual_processing_policy.Indentation_Inference}\n- Line Number Filtering: ${policies.visual_processing_policy.Line_Number_Filtering}\n- Character Ambiguity Resolution Rules: ${JSON.stringify(policies.visual_processing_policy.Character_Ambiguity_Resolution, null, 2)}\n\nTarget Language Details:\n- Language: ${langConfig.target_language}\n- Cheatsheet: ${JSON.stringify(langConfig.language_cheatsheet, null, 2)}\n`;
+  const policies = languages.fixed_policies;
+  return `${policies.code_reconstruction_policy}\n\nVisual Processing Policies:\n- Indentation Inference: ${policies.visual_processing_policy.Indentation_Inference}\n- Line Number Filtering: ${policies.visual_processing_policy.Line_Number_Filtering}\n- Character Ambiguity Resolution Rules: ${JSON.stringify(policies.visual_processing_policy.Character_Ambiguity_Resolution, null, 2)}\n\nTarget Language Details:\n- Language: ${langConfig.target_language}\n- Cheatsheet: ${JSON.stringify(langConfig.language_cheatsheet, null, 2)}\n`;
 }
 
 // ==========================================================
@@ -69,12 +99,26 @@ function constructPromptForLanguage(language) {
 function startSelectionMode(tab) {
   const tabId = tab.id;
   if (activeTabs.has(tabId)) {
-    browser.tabs.sendMessage(tabId, { command: "cancel_selection" }).catch(() => activeTabs.delete(tabId));
+    browser.tabs
+      .sendMessage(tabId, { command: "cancel_selection" })
+      .catch(() => activeTabs.delete(tabId));
   } else {
-    browser.scripting.executeScript({ target: { tabId: tabId }, files: ["select.js"] })
-      .then(() => browser.scripting.executeScript({ target: { tabId: tabId }, func: () => { document.body.style.cursor = "crosshair"; } }))
-      .then(() => { activeTabs.add(tabId); })
-      .catch((error) => { console.error("Error injecting script:", error); });
+    browser.scripting
+      .executeScript({ target: { tabId: tabId }, files: ["select.js"] })
+      .then(() =>
+        browser.scripting.executeScript({
+          target: { tabId: tabId },
+          func: () => {
+            document.body.style.cursor = "crosshair";
+          },
+        }),
+      )
+      .then(() => {
+        activeTabs.add(tabId);
+      })
+      .catch((error) => {
+        console.error("Error injecting script:", error);
+      });
   }
 }
 
@@ -85,8 +129,16 @@ function startSelectionMode(tab) {
 browser.runtime.onMessage.addListener((message, sender) => {
   const tabId = sender.tab.id;
 
-  if (message.command === "screenshot_selected_area" || message.command === "selection_cancelled") {
-    browser.scripting.executeScript({ target: { tabId: tabId }, func: () => { document.body.style.cursor = "default"; } });
+  if (
+    message.command === "screenshot_selected_area" ||
+    message.command === "selection_cancelled"
+  ) {
+    browser.scripting.executeScript({
+      target: { tabId: tabId },
+      func: () => {
+        document.body.style.cursor = "default";
+      },
+    });
     activeTabs.delete(tabId);
   }
 
@@ -94,38 +146,47 @@ browser.runtime.onMessage.addListener((message, sender) => {
     const coords = message.coords;
 
     const langOptions = Object.keys(languages.language_configurations);
-    browser.tabs.sendMessage(tabId, { command: "show_loading_modal", languages: langOptions, allLangs: lang });
+    browser.tabs.sendMessage(tabId, {
+      command: "show_loading_modal",
+      languages: langOptions,
+      allLangs: lang,
+    });
 
-    browser.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" })
-      .then(dataUrl => cropImageOnCanvas(dataUrl, coords))
+    browser.tabs
+      .captureVisibleTab(sender.tab.windowId, { format: "png" })
+      .then((dataUrl) => cropImageOnCanvas(dataUrl, coords))
       .then(async (croppedDataUrl) => {
         lastCroppedImageDataByTab[tabId] = croppedDataUrl;
-        
+
         const settings = await browser.storage.local.get("codeocr_lang_preset");
         const langPreset = settings.codeocr_lang_preset;
 
         let prompt = GEMINI_PROMPT_TEXT;
         if (langPreset && langPreset !== "default") {
-            prompt = constructPromptForLanguage(langPreset);
+          prompt = constructPromptForLanguage(langPreset);
         }
 
         // Retrieve selected languages from storage
-        const selectedLangsResult = await browser.storage.local.get("selectedLanguages");
+        const selectedLangsResult =
+          await browser.storage.local.get("selectedLanguages");
         const selectedLanguages = selectedLangsResult.selectedLanguages || [];
 
         if (selectedLanguages.length > 0) {
-            const langInfo = selectedLanguages.map(l => ({
-                index: l.index,
-                name: l.name,
-                id: l.id
-            }));
-            prompt += `\n\nUser's potential languages: ${JSON.stringify(langInfo)}`;
+          const langInfo = selectedLanguages.map((l) => ({
+            index: l.index,
+            name: l.name,
+            id: l.id,
+          }));
+          prompt += `\n\nUser's potential languages: ${JSON.stringify(langInfo)}`;
         }
 
         sendToBackend(tabId, croppedDataUrl, prompt);
       })
-      .catch(error => {
-        browser.tabs.sendMessage(tabId, { command: "update_display", text: `[ERROR] Failed to process screenshot: ${error.message}` });
+      .catch((error) => {
+        browser.tabs.sendMessage(tabId, {
+          command: "update_display",
+          text: `[ERROR] Failed to process screenshot: ${error.message}`,
+        });
       });
 
     return true; // Indicates asynchronous response
@@ -137,7 +198,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     if (imageData) {
       const prompt = constructPromptForLanguage(newLanguage);
       sendToBackend(tabId, imageData, prompt);
-    } 
+    }
     return true;
   }
 });

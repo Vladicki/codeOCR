@@ -256,8 +256,10 @@ async function createDisplayModal(
   const settings = await browser.storage.local.get([
     "codeocr_font_size",
     "codeocr_lang_preset",
+    "codeocr_gui_scale",
   ]);
   userFontSize = settings.codeocr_font_size || 2;
+  const userGuiScale = settings.codeocr_gui_scale || 1;
 
   loadArimoFont();
   stopSpinner();
@@ -273,7 +275,8 @@ async function createDisplayModal(
     top: "1.25rem",
     right: "1.25rem",
     left: "auto",
-    transform: "none",
+    transform: `scale(${userGuiScale})`,
+    transformOrigin: "top right",
     zIndex: "2147483647",
     width: "auto",
     height: "auto",
@@ -320,6 +323,10 @@ async function createDisplayModal(
         <div class="setting-item" style="margin-bottom: 0.9375rem; display: flex; align-items: center; gap: 0.625rem; font-size: 0.7em;">
             <label for="font-size-input">Font Size (rem):</label>
             <input type="number" id="font-size-input" min="0.5" max="5" step="0.1" value="${userFontSize}" style="width: 2.5rem; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; padding: 0.25rem; font-size: 0.7em; -moz-appearance: textfield; appearance: textfield; outline: none; border-color: white; border-radius: 0.125rem;" onfocus="this.style.borderColor='white'" onblur="this.style.borderColor='#4a4a4a'">
+        </div>
+        <div class="setting-item" style="margin-bottom: 0.9375rem; display: flex; align-items: center; gap: 0.625rem; font-size: 0.7em;">
+            <label for="gui-scale-input">GUI Scale:</label>
+            <input type="number" id="gui-scale-input" min="0.5" max="2" step="0.1" value="${userGuiScale}" style="width: 2.5rem; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; padding: 0.25rem; font-size: 0.7em; -moz-appearance: textfield; appearance: textfield; outline: none; border-color: white; border-radius: 0.125rem;" onfocus="this.style.borderColor='white'" onblur="this.style.borderColor='#4a4a4a'">
         </div>
         <div class="setting-item" style="margin-bottom: 0.9375rem; font-size: 0.7em;">
             <label style="display: block; margin-bottom: 0.3125rem;">Default Language Preset:</label>
@@ -402,6 +409,15 @@ async function createDisplayModal(
       outputEditor.style.fontSize = `${newSize}rem`;
       userFontSize = newSize;
       browser.storage.local.set({ codeocr_font_size: newSize });
+    }
+  });
+
+  const guiScaleInput = document.getElementById("gui-scale-input");
+  guiScaleInput.addEventListener("input", (e) => {
+    const newScale = parseFloat(e.target.value);
+    if (newScale >= 0.5 && newScale <= 2) {
+      modal.style.transform = `scale(${newScale})`;
+      browser.storage.local.set({ codeocr_gui_scale: newScale });
     }
   });
 
@@ -690,3 +706,4 @@ browser.runtime.onMessage.addListener((message) => {
     return true;
   }
 });
+

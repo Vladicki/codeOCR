@@ -40,6 +40,11 @@ To improve the processing speed of the OCR, you can run the extension with a loc
     ```
     GEMINI_API_KEY=your_api_key
     ```
+5. change localendpoint in background js to localhost:8080:
+    ```
+    //Uncomment
+    const apiEndpoint = "http://localhost:8080/process-image";
+    ```
     The server will start and listen for requests from the browser extension.
 
 ### Browser Extension Setup

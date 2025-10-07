@@ -4,7 +4,13 @@
     "version": "1.0",
     "description": "Language-aware OCR for code snippets.",
     "icons": {
-        "48": "icon-48.png"
+        "48": "icons/icon-48.png"
+    },
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "codeocr@vladika.net",
+            "strict_min_version": "109.0"
+        }
     },
     "permissions": [
         "activeTab",

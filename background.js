@@ -117,10 +117,14 @@ function sendToBackend(tabId, imageData, prompt) {
   //const apiEndpoint = "http://localhost:8080/process-image";
   // set server API endpoint to your deployed domain
   const apiEndpoint = "https://codeocr.vladika.net/process-image";
+  const extensionId = browser.runtime.id; // ← auto-filled by Firefox
 
   fetch(apiEndpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Extension-ID": "extensionId",
+    },
     body: JSON.stringify({ image_data: imageData, prompt: prompt }),
   })
     .then((response) => {

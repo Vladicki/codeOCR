@@ -36,7 +36,6 @@ To improve the processing speed of the OCR, you can run the extension with a loc
     ```bash
     ./local_backend/main
     ```
-    ```
 4. Create a `.env` file in the root of the project and add your Gemini API key to it:
     ```
     GEMINI_API_KEY=your_api_key

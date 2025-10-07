@@ -1,7 +1,7 @@
 // --- background.js ---
 
 // 💡 IMPORT: Import from external modules
-import { GEMINI_PROMPT_TEXT } from "./prompt.js";
+// Removed GEMINI_PROMPT_TEXT import as all prompt structure is now in 'languages'
 import { languages } from "./languages.js";
 import { lang } from "./langs.js";
 
@@ -10,7 +10,73 @@ const activeTabs = new Set();
 let lastCroppedImageDataByTab = {}; // Store image data by tab ID
 
 // ==========================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (PROMPT CONSTRUCTION)
+// ==========================================================
+
+function constructBasePrompt() {
+  const policies = languages.fixed_policies;
+
+  // Helper to format the Ambiguity Resolution Rules cleanly
+  const ambiguityRules = Object.entries(
+    policies.visual_processing_policy.Character_Ambiguity_Resolution,
+  )
+    .map(([key, value]) => `  - **${key}**: ${value}`)
+    .join("\n");
+
+  return `${policies.code_reconstruction_policy}
+
+## VISUAL AND AMBIGUITY POLICIES
+- **Indentation Inference**: ${policies.visual_processing_policy.Indentation_Inference}
+- **Line Number Filtering**: ${policies.visual_processing_policy.Line_Number_Filtering}
+- **Character Ambiguity Resolution**:
+${ambiguityRules}
+
+## NO SPECIFIC LANGUAGE CONTEXT PROVIDED
+Please apply the general visual and reconstruction policies above to the screenshot and infer the code type based on common syntax.
+`.trim();
+}
+
+function constructPromptForLanguage(language) {
+  const langConfig = languages.language_configurations[language];
+
+  // Fallback to base prompt if language is not found
+  if (!langConfig || language === "default") {
+    return constructBasePrompt();
+  }
+
+  const policies = languages.fixed_policies;
+  const cheatsheet = langConfig.language_cheatsheet;
+
+  // Format Cheatsheet into LLM-friendly bullet points (more efficient than JSON.stringify)
+  let cheatsheetText = "";
+  for (const [ruleName, ruleDescription] of Object.entries(cheatsheet)) {
+    cheatsheetText += `- **${ruleName}**: ${ruleDescription}\n`;
+  }
+
+  // Helper to format the Ambiguity Resolution Rules cleanly
+  const ambiguityRules = Object.entries(
+    policies.visual_processing_policy.Character_Ambiguity_Resolution,
+  )
+    .map(([key, value]) => `  - **${key}**: ${value}`)
+    .join("\n");
+
+  // Construct the full prompt
+  return `${policies.code_reconstruction_policy}
+
+## VISUAL AND AMBIGUITY POLICIES
+- **Indentation Inference**: ${policies.visual_processing_policy.Indentation_Inference}
+- **Line Number Filtering**: ${policies.visual_processing_policy.Line_Number_Filtering}
+- **Character Ambiguity Resolution**:
+${ambiguityRules}
+
+## TARGET LANGUAGE: ${langConfig.target_language}
+**Specific Syntax Rules (Cheatsheet):**
+${cheatsheetText}
+`.trim();
+}
+
+// ==========================================================
+// HELPER FUNCTIONS (IMAGE AND NETWORK)
 // ==========================================================
 
 function cropImageOnCanvas(dataUrl, coords) {
@@ -84,14 +150,6 @@ function sendToBackend(tabId, imageData, prompt) {
     });
 }
 
-function constructPromptForLanguage(language) {
-  const langConfig = languages.language_configurations[language];
-  if (!langConfig) return GEMINI_PROMPT_TEXT; // Fallback
-
-  const policies = languages.fixed_policies;
-  return `${policies.code_reconstruction_policy}\n\nVisual Processing Policies:\n- Indentation Inference: ${policies.visual_processing_policy.Indentation_Inference}\n- Line Number Filtering: ${policies.visual_processing_policy.Line_Number_Filtering}\n- Character Ambiguity Resolution Rules: ${JSON.stringify(policies.visual_processing_policy.Character_Ambiguity_Resolution, null, 2)}\n\nTarget Language Details:\n- Language: ${langConfig.target_language}\n- Cheatsheet: ${JSON.stringify(langConfig.language_cheatsheet, null, 2)}\n`;
-}
-
 // ==========================================================
 // EXTENSION CORE LOGIC
 // ==========================================================
@@ -161,12 +219,9 @@ browser.runtime.onMessage.addListener((message, sender) => {
         const settings = await browser.storage.local.get("codeocr_lang_preset");
         const langPreset = settings.codeocr_lang_preset;
 
-        let prompt = GEMINI_PROMPT_TEXT;
-        if (langPreset && langPreset !== "default") {
-          prompt = constructPromptForLanguage(langPreset);
-        }
+        // Use the new optimized prompt construction logic
+        let prompt = constructPromptForLanguage(langPreset || "default"); // Retrieve selected languages from storage
 
-        // Retrieve selected languages from storage
         const selectedLangsResult =
           await browser.storage.local.get("selectedLanguages");
         const selectedLanguages = selectedLangsResult.selectedLanguages || [];

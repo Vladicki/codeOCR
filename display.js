@@ -170,8 +170,59 @@ function togglePossibleLanguageSelection(language, index, isChecked) {
 }
 
 // ==========================================================
+// DROPDOWN KEYBOARD NAVIGATION
+// ==========================================================
+
+function handleDropdownKeyboardNavigation(input, list, dropdown) {
+  let focusedIndex = -1;
+
+  input.addEventListener("keydown", (e) => {
+    const items = Array.from(list.children).filter(
+      (li) => li.style.display !== "none",
+    );
+    if (items.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      focusedIndex = (focusedIndex + 1) % items.length;
+      updateFocus(items);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      focusedIndex = (focusedIndex - 1 + items.length) % items.length;
+      updateFocus(items);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (focusedIndex > -1) {
+        const item = items[focusedIndex];
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          const changeEvent = new Event("change", { bubbles: true });
+          checkbox.dispatchEvent(changeEvent);
+        } else {
+          item.click();
+          dropdown.style.display = "none";
+        }
+      }
+    }
+  });
+
+  function updateFocus(items) {
+    items.forEach((item, index) => {
+      if (index === focusedIndex) {
+        item.style.backgroundColor = "#2f2f2f";
+        item.scrollIntoView({ block: "nearest" });
+      } else {
+        item.style.backgroundColor = "transparent";
+      }
+    });
+  }
+}
+
+// ==========================================================
 // DRAGGABLE AND RESIZABLE LOGIC (Omitted for brevity)
 // ==========================================================
+
 function makeDraggable(element, handle) {
   let pos1 = 0,
     pos2 = 0,
@@ -298,13 +349,13 @@ async function createDisplayModal(
         <div style="display: flex; align-items: center; gap: 0.625rem;">
             <h2 style="color: #00b4ff; margin: 0; font-size: 1.6em;">CodeOCR</h2>
             <div id="codeocr-language-search-container" style="position: relative; width: 12.5rem;">
-                <div id="codeocr-visible-selection" style="padding: 0.25rem 0.5rem; border-radius: 0.375rem; background-color: #4a4a4a; color: white; border: 1px solid #4a4a4a; font-size: 1.1em; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-transform: capitalize;">
+                <div id="codeocr-visible-selection" style="padding: 0.25rem 0.5rem; border-radius: 0.375rem; background-color: #4a4a4a; color: white; border: 1px solid #4a4a4a; font-size: 1.4em; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-transform: capitalize;">
                     <span id="codeocr-selected-language-label">Plain Text</span>
                     <span style="font-size: 0.7em;">▼</span>
                 </div>
                 <div id="codeocr-language-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background-color: #3a3a3a; border-top: none; z-index: 2147483648; max-height: 40vh; overflow-y: auto; border-radius: 0 0 0.25rem 0.25rem; box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.5);">
                     <input id="codeocr-search-input" type="text" placeholder="Search for language..." style="width: 100%; padding: 0.5rem; box-sizing: border-box; background-color: #252525; color: white; border: 1px solid #2d2d2d; font-size: 1.3em; margin: 0; outline: none;">
-                    <ul id="codeocr-options-list" style="list-style: none; padding: 0; margin: 0;">
+                    <ul id="codeocr-options-list" style="list-style: none; font-size:1.8em; padding: 0; margin: 0;">
                     </ul>
                 </div>
             </div>
@@ -336,7 +387,7 @@ async function createDisplayModal(
                     <span style="font-size: 0.7em;">▼</span>
                 </div>
                 <div id="codeocr-lang-preset-dropdown-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background-color: #3a3a3a; border: 1px solid #4a4a4a; z-index: 10; max-height: 28.125rem; overflow-y: auto; border-radius: 0 0 0.25rem 0.25rem; box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.5);">
-                    <input type="text" id="codeocr-lang-preset-search-input" placeholder="Search language preset..." style="width: 100%; padding: 0.5rem; box-sizing: border-box; background-color: #252525; color: white; border: 1px solid #2d2d2d; font-size: 1em; margin: 0; outline: none;">
+                    <input type="text" id="codeocr-lang-preset-search-input" placeholder="Search language preset..." style="width: 100%; padding: 0.4rem; box-sizing: border-box; background-color: #252525; color: white; border: 1px solid #2d2d2d; font-size: 1em; margin: 0; outline: none;">
                     <ul id="codeocr-lang-preset-options-list" style="list-style: none; padding: 0; margin: 0;">
                     </ul>
                 </div>
@@ -479,6 +530,12 @@ async function createDisplayModal(
         langPresetDropdownList.style.display = "none";
       }
     });
+
+    handleDropdownKeyboardNavigation(
+      langPresetSearchInput,
+      langPresetOptionsList,
+      langPresetDropdownList,
+    );
   }
 
   // Initialize the selected label for language preset
@@ -539,13 +596,21 @@ async function createDisplayModal(
       currentLanguage = newLanguage;
       mainSelectedLabel.textContent = capitalize(currentLanguage);
       mainLanguageList.style.display = "none";
-      outputEditor.textContent = `Re-analyzing with new language: ${capitalize(currentLanguage)}...`;
+      outputEditor.textContent = `Re-analyzing with new language: ${capitalize(
+        currentLanguage,
+      )}...`;
       browser.runtime.sendMessage({
         command: "rerun_ocr",
         newLanguage: currentLanguage,
       });
     }
   });
+
+  handleDropdownKeyboardNavigation(
+    mainSearchInput,
+    mainOptionsList,
+    mainLanguageList,
+  );
 
   // --- Global Click Listeners ---
   document.addEventListener("click", (e) => {
@@ -626,6 +691,12 @@ async function createDisplayModal(
           }
         });
       });
+
+      handleDropdownKeyboardNavigation(
+        possibleLangsSearchInput,
+        possibleLangsCheckboxes,
+        possibleLangsDropdownList,
+      );
     }
   }
 
@@ -668,7 +739,30 @@ document.addEventListener("keydown", (e) => {
   }
   if (modal && e.key === "Escape") {
     e.preventDefault();
-    document.getElementById("codeocr-close")?.click();
+
+    const langList = document.getElementById("codeocr-language-list");
+    const langPresetList = document.getElementById(
+      "codeocr-lang-preset-dropdown-list",
+    );
+    const possibleLangsList = document.getElementById(
+      "codeocr-possible-languages-dropdown-list",
+    );
+
+    if (langList && langList.style.display === "block") {
+      langList.style.display = "none";
+    } else if (
+      langPresetList &&
+      langPresetList.style.display === "block"
+    ) {
+      langPresetList.style.display = "none";
+    } else if (
+      possibleLangsList &&
+      possibleLangsList.style.display === "block"
+    ) {
+      possibleLangsList.style.display = "none";
+    } else {
+      document.getElementById("codeocr-close")?.click();
+    }
   }
 });
 
@@ -706,4 +800,3 @@ browser.runtime.onMessage.addListener((message) => {
     return true;
   }
 });
-

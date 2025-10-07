@@ -60,70 +60,27 @@ function renderLanguageList() {
   );
 
   if (optionsList) {
-    optionsList.innerHTML = ""; // Clear first
-    availableLanguages.forEach((lang) => {
-      const li = document.createElement("li");
-      li.dataset.value = lang;
-      li.style.padding = "0.375rem 0.5rem";
-      li.style.cursor = "pointer";
-      li.style.fontSize = "0.7em";
-      li.style.textTransform = "capitalize";
-      li.style.transition = "background-color 0.1s";
-
-      li.addEventListener(
-        "mouseover",
-        () => (li.style.backgroundColor = "#2f2f2f"),
-      );
-      li.addEventListener(
-        "mouseout",
-        () => (li.style.backgroundColor = "transparent"),
-      );
-
-      li.textContent = capitalize(lang);
-      optionsList.appendChild(li);
-    });
+    optionsList.innerHTML = availableLanguages
+      .map(
+        (lang) =>
+          `<li data-value="${lang}" style="padding: 0.375rem 0.5rem; cursor: pointer; font-size: 0.7em; text-transform: capitalize; transition: background-color 0.1s;" onmouseover="this.style.backgroundColor='#2f2f2f'" onmouseout="this.style.backgroundColor='transparent'">${capitalize(
+            lang,
+          )}</li>`,
+      )
+      .join("");
   }
 
   if (langPresetOptionsList) {
-    langPresetOptionsList.innerHTML = "";
-    const defaultLi = document.createElement("li");
-    defaultLi.dataset.value = "default";
-    defaultLi.textContent = "Default (Auto-Detect)";
-    defaultLi.style.padding = "0.375rem 0.5rem";
-    defaultLi.style.cursor = "pointer";
-    defaultLi.style.fontSize = "0.7em";
-    defaultLi.style.textTransform = "capitalize";
-    defaultLi.style.transition = "background-color 0.1s";
-    defaultLi.addEventListener(
-      "mouseover",
-      () => (defaultLi.style.backgroundColor = "#2f2f2f"),
-    );
-    defaultLi.addEventListener(
-      "mouseout",
-      () => (defaultLi.style.backgroundColor = "transparent"),
-    );
-
-    langPresetOptionsList.appendChild(defaultLi);
-
-    availableLanguages.forEach((lang) => {
-      const li = document.createElement("li");
-      li.dataset.value = lang;
-      li.style.padding = "0.375rem 0.5rem";
-      li.style.cursor = "pointer";
-      li.style.fontSize = "0.7em";
-      li.style.textTransform = "capitalize";
-      li.style.transition = "background-color 0.1s";
-      li.addEventListener(
-        "mouseover",
-        () => (li.style.backgroundColor = "#2f2f2f"),
-      );
-      li.addEventListener(
-        "mouseout",
-        () => (li.style.backgroundColor = "transparent"),
-      );
-      li.textContent = capitalize(lang);
-      langPresetOptionsList.appendChild(li);
-    });
+    const defaultOption = `<li data-value="default" style="padding: 0.375rem 0.5rem; cursor: pointer; font-size: 1.4em; text-transform: capitalize; transition: background-color 0.1s;" onmouseover="this.style.backgroundColor='#2f2f2f'" onmouseout="this.style.backgroundColor='transparent'">Default (Auto-Detect)</li>`;
+    const languageOptions = availableLanguages
+      .map(
+        (lang) =>
+          `<li data-value="${lang}" style="padding: 0.375rem 0.5rem; cursor: pointer; font-size: 0.7rm; text-transform: capitalize; transition: background-color 0.1s;" onmouseover="this.style.backgroundColor='#2f2f2f'" onmouseout="this.style.backgroundColor='transparent'">${capitalize(
+            lang,
+          )}</li>`,
+      )
+      .join("");
+    langPresetOptionsList.innerHTML = defaultOption + languageOptions;
   }
 }
 
@@ -344,8 +301,8 @@ async function createDisplayModal(
   allLangsData = [],
 ) {
   const isLoading = textOrCode === ". . .";
-  const code = textOrCode;
-  const language = initialLanguage;
+  let code = textOrCode;
+  let language = initialLanguage;
 
   const settings = await browser.storage.local.get([
     "codeocr_font_size",
@@ -358,13 +315,12 @@ async function createDisplayModal(
   loadArimoFont();
   stopSpinner();
 
-  // Remove existing modal
-  const existingModal = document.getElementById(UI_ID);
+  let existingModal = document.getElementById(UI_ID);
   if (existingModal) existingModal.remove();
 
-  // Create modal
   const modal = document.createElement("div");
   modal.id = UI_ID;
+
   Object.assign(modal.style, {
     position: "fixed",
     top: "1.25rem",
@@ -373,6 +329,8 @@ async function createDisplayModal(
     transform: `scale(${userGuiScale})`,
     transformOrigin: "top right",
     zIndex: "2147483647",
+    width: "auto",
+    height: "auto",
     minWidth: "18.75rem",
     minHeight: "12.5rem",
     backgroundColor: "#191919",
@@ -382,64 +340,389 @@ async function createDisplayModal(
     boxShadow: "0 0.25rem 0.75rem rgba(0, 0, 0, 0.5)",
     display: "flex",
     flexDirection: "column",
+    overflow: "visible",
     fontFamily: "'Arimo', sans-serif",
   });
 
-  // Header
-  const header = document.createElement("div");
-  header.id = "codeocr-header";
-  Object.assign(header.style, {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "0.5rem 0.9375rem",
-    backgroundColor: "#252526",
-    borderBottom: "1px solid #00b4ff",
-    cursor: "move",
-  });
-
-  const titleDiv = document.createElement("div");
-  titleDiv.style.display = "flex";
-  titleDiv.style.alignItems = "center";
-  titleDiv.style.gap = "0.625rem";
-
-  const h2 = document.createElement("h2");
-  h2.style.color = "#00b4ff";
-  h2.style.margin = "0";
-  h2.style.fontSize = "1.6em";
-  h2.textContent = "CodeOCR";
-
-  titleDiv.appendChild(h2);
-  header.appendChild(titleDiv);
-
-  modal.appendChild(header);
-
-  // Output Editor
-  const outputEditor = document.createElement("div");
-  outputEditor.id = "codeocr-output-editor";
-  outputEditor.contentEditable = "true";
-  outputEditor.spellcheck = false;
-  outputEditor.style.flexGrow = "1";
-  outputEditor.style.padding = "0.9375rem";
-  outputEditor.style.overflow = "auto";
-  outputEditor.style.whiteSpace = "pre-wrap";
-  outputEditor.style.fontFamily = "inherit";
-  outputEditor.style.fontSize = `${userFontSize}rem`;
-  outputEditor.style.lineHeight = "1.4";
-  outputEditor.style.caretColor = "white";
-  outputEditor.style.outline = "none";
-  outputEditor.style.cursor = "text";
-  outputEditor.textContent = code;
-
-  modal.appendChild(outputEditor);
+  modal.innerHTML = `
+    <div id="codeocr-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.9375rem; background-color: #252526; border-bottom: 1px solid #00b4ff; cursor: move;">
+        <div style="display: flex; align-items: center; gap: 0.625rem;">
+            <h2 style="color: #00b4ff; margin: 0; font-size: 1.6em;">CodeOCR</h2>
+            <div id="codeocr-language-search-container" style="position: relative; width: 12.5rem;">
+                <div id="codeocr-visible-selection" style="padding: 0.25rem 0.5rem; border-radius: 0.375rem; background-color: #4a4a4a; color: white; border: 1px solid #4a4a4a; font-size: 1.4em; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-transform: capitalize;">
+                    <span id="codeocr-selected-language-label">Plain Text</span>
+                    <span style="font-size: 0.7em;">▼</span>
+                </div>
+                <div id="codeocr-language-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background-color: #3a3a3a; border-top: none; z-index: 2147483648; max-height: 40vh; overflow-y: auto; border-radius: 0 0 0.25rem 0.25rem; box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.5);">
+                    <input id="codeocr-search-input" type="text" placeholder="Search for language..." style="width: 100%; padding: 0.5rem; box-sizing: border-box; background-color: #252525; color: white; border: 1px solid #2d2d2d; font-size: 1.3em; margin: 0; outline: none;">
+                    <ul id="codeocr-options-list" style="list-style: none; font-size:1.8em; padding: 0; margin: 0;">
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <button id="codeocr-settings-btn" style="background: none; border: none; color: #d4d4d4; font-size: 1.2em; cursor: pointer; padding: 0 0.625rem;">•••</button>
+            <button id="codeocr-close" style="background: none; border: none; color: #d4d4d4; font-size: 2em; cursor: pointer; padding: 0 0.3125rem;">&times;</button>
+        </div>
+    </div>
+    <div id="codeocr-output-editor" contenteditable="true" spellcheck="false" style="flex-grow: 1; padding: 0.9375rem; margin: 0; overflow: auto; white-space: pre-wrap; font-family: inherit; font-size: ${userFontSize}rem; line-height: 1.4; caret-color: white; outline: none; cursor: text;"></div>
+    <button id="codeocr-copy" style="padding: 0.5rem 0.9375rem; background-color: #007acc; color: white; border: none; border-radius: 0 0 0.5rem 0.5rem; cursor: pointer; font-size: 1.2em; transition: background-color 0.2s;">Copy (Alt+Enter)</button>
+    <div id="codeocr-resize-handle" style="position: absolute; bottom: 0; right: 0; width: 0.9375rem; height: 0.9375rem; background: transparent; cursor: nwse-resize;"></div>
+    
+    <div id="codeocr-settings-panel" style="display: none; position: absolute; top: 3rem; right: 0.3125rem; background: #252526; border: 1px solid #30302e; border-radius: 0.5rem; padding: 0.9375rem; z-index: 10; width: 21.875rem; color: #f0efed; font-size: 2rem;">
+        <h3 style="margin-top: 0; color: #00b4ff; font-size: 0.8em;">Settings</h3>
+        <div class="setting-item" style="margin-bottom: 0.9375rem; display: flex; align-items: center; gap: 0.625rem; font-size: 0.7em;">
+            <label for="font-size-input">Font Size (rem):</label>
+            <input type="number" id="font-size-input" min="0.5" max="5" step="0.1" value="${userFontSize}" style="width: 2.5rem; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; padding: 0.25rem; font-size: 0.7em; -moz-appearance: textfield; appearance: textfield; outline: none; border-color: white; border-radius: 0.125rem;" onfocus="this.style.borderColor='white'" onblur="this.style.borderColor='#4a4a4a'">
+        </div>
+        <div class="setting-item" style="margin-bottom: 0.9375rem; display: flex; align-items: center; gap: 0.625rem; font-size: 0.7em;">
+            <label for="gui-scale-input">GUI Scale:</label>
+            <input type="number" id="gui-scale-input" min="0.5" max="2" step="0.1" value="${userGuiScale}" style="width: 2.5rem; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; padding: 0.25rem; font-size: 0.7em; -moz-appearance: textfield; appearance: textfield; outline: none; border-color: white; border-radius: 0.125rem;" onfocus="this.style.borderColor='white'" onblur="this.style.borderColor='#4a4a4a'">
+        </div>
+        <div class="setting-item" style="margin-bottom: 0.9375rem; font-size: 0.7em;">
+            <label style="display: block; margin-bottom: 0.3125rem;">Default Language Preset:</label>
+            <div id="codeocr-lang-preset-search-container" style="position: relative;">
+                <div id="codeocr-lang-preset-visible-selection" style="padding: 0.3125rem; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; font-size: 1em; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 0.125rem;">
+                    <span id="codeocr-lang-preset-selected-label">Default (Auto-Detect)</span>
+                    <span style="font-size: 0.7em;">▼</span>
+                </div>
+                <div id="codeocr-lang-preset-dropdown-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background-color: #3a3a3a; border: 1px solid #4a4a4a; z-index: 10; max-height: 28.125rem; overflow-y: auto; border-radius: 0 0 0.25rem 0.25rem; box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.5);">
+                    <input type="text" id="codeocr-lang-preset-search-input" placeholder="Search language preset..." style="width: 100%; padding: 0.4rem; box-sizing: border-box; background-color: #252525; color: white; border: 1px solid #2d2d2d; font-size: 1em; margin: 0; outline: none;">
+                    <ul id="codeocr-lang-preset-options-list" style="list-style: none; padding: 0; margin: 0;">
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="setting-item" style="margin-bottom: 0.9375rem; font-size: 0.7em;">
+            <label style="display: block; margin-bottom: 0.3125rem;">Native Languages:</label>
+            <div id="codeocr-possible-languages-search-container" style="position: relative;">
+                <div id="codeocr-possible-languages-visible-selection" style="padding: 0.3125rem; background: #3a3a3a; color: white; border: 1px solid #4a4a4a; font-size: 1em; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 0.125rem;">
+                    <span id="codeocr-possible-languages-selected-label">Select languages...</span>
+                    <span style="font-size: 0.7em;">▼</span>
+                </div>
+                <div id="codeocr-possible-languages-dropdown-list" style="display: none; position: absolute; top: 100%; left: 0; width: 100%; background-color: #3a3a3a; border: 1px solid #4a4a4a; z-index: 10; max-height: 28.125rem; overflow-y: auto; border-radius: 0 0 0.25rem 0.25rem; box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.5);">
+                    <input type="text" id="codeocr-possible-languages-search-input" placeholder="Search languages..." style="width: 100%; padding: 0.5rem; box-sizing: border-box; background-color: #252525; color: white; border: 1px solid #2d2d2d; font-size: 0.7em; margin: 0; outline: none;">
+                    <div id="codeocr-possible-languages-checkboxes" style="padding: 0.3125rem;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="setting-item" style="font-size: 0.6em;">
+            <h4 style="margin-bottom: 0.3125rem; color: #00b4ff;">Shortcuts</h4>
+            <ul style="margin: 0; padding-left: 1.25rem;">
+                <li><strong style="color: #00b4ff;">Alt+C / ⌘+C:</strong> Start Capture</li>
+                <li><strong style="color: #00b4ff;">Alt+Enter / ⌘+Enter:</strong> Copy & Close / Re-open</li>
+                <li><strong style="color: #00b4ff;">Escape:</strong> Close Window</li>
+            </ul>
+        </div>
+    </div>
+  `;
 
   document.body.appendChild(modal);
+  renderLanguageList();
+  renderPossibleLanguagesCheckboxes(allLangsData); // Call the new function here
 
-  // Render lists safely
-  renderLanguageListSafely();
-  await renderPossibleLanguagesCheckboxes(allLangsData);
+  const outputEditor = document.getElementById("codeocr-output-editor");
+  const header = document.getElementById("codeocr-header");
+  const copyBtn = document.getElementById("codeocr-copy");
+  const closeBtn = document.getElementById("codeocr-close");
+  const resizeHandle = document.getElementById("codeocr-resize-handle");
 
   currentLanguage = language;
+  document.getElementById("codeocr-selected-language-label").textContent =
+    capitalize(currentLanguage);
+  outputEditor.textContent = code;
+
+  makeDraggable(modal, header);
+  makeResizable(modal, resizeHandle);
+
+  const closeModal = () => {
+    stopSpinner(outputEditor);
+    lastBuffer.code = outputEditor.textContent;
+    lastBuffer.language = currentLanguage;
+    modal.remove();
+  };
+
+  closeBtn.addEventListener("click", closeModal);
+
+  // --- Settings Panel Logic ---
+  const settingsBtn = document.getElementById("codeocr-settings-btn");
+  const settingsPanel = document.getElementById("codeocr-settings-panel");
+  settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isVisible = settingsPanel.style.display === "block";
+    settingsPanel.style.display = isVisible ? "none" : "block";
+  });
+
+  const fontSizeInput = document.getElementById("font-size-input");
+  fontSizeInput.addEventListener("input", (e) => {
+    const newSize = parseFloat(e.target.value);
+    if (newSize >= 0.5) {
+      outputEditor.style.fontSize = `${newSize}rem`;
+      userFontSize = newSize;
+      browser.storage.local.set({ codeocr_font_size: newSize });
+    }
+  });
+
+  const guiScaleInput = document.getElementById("gui-scale-input");
+  guiScaleInput.addEventListener("input", (e) => {
+    const newScale = parseFloat(e.target.value);
+    if (newScale >= 0.5 && newScale <= 2) {
+      modal.style.transform = `scale(${newScale})`;
+      browser.storage.local.set({ codeocr_gui_scale: newScale });
+    }
+  });
+
+  // --- Language Preset Dropdown Logic ---
+  const langPresetSearchContainer = document.getElementById(
+    "codeocr-lang-preset-search-container",
+  );
+  const langPresetVisibleSelection = document.getElementById(
+    "codeocr-lang-preset-visible-selection",
+  );
+  const langPresetSelectedLabel = document.getElementById(
+    "codeocr-lang-preset-selected-label",
+  );
+  const langPresetDropdownList = document.getElementById(
+    "codeocr-lang-preset-dropdown-list",
+  );
+  const langPresetSearchInput = document.getElementById(
+    "codeocr-lang-preset-search-input",
+  );
+  const langPresetOptionsList = document.getElementById(
+    "codeocr-lang-preset-options-list",
+  );
+
+  if (langPresetVisibleSelection && langPresetDropdownList) {
+    langPresetVisibleSelection.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isVisible = langPresetDropdownList.style.display === "block";
+      langPresetDropdownList.style.display = isVisible ? "none" : "block";
+      if (!isVisible) {
+        // If dropdown is now visible
+        document.getElementById("codeocr-lang-preset-search-input").focus();
+      }
+    });
+  }
+
+  if (langPresetSearchInput && langPresetOptionsList) {
+    langPresetSearchInput.addEventListener("input", (e) => {
+      const query = e.target.value.toLowerCase();
+      Array.from(langPresetOptionsList.children).forEach((li) => {
+        li.style.display = li
+          .getAttribute("data-value")
+          .toLowerCase()
+          .includes(query)
+          ? "block"
+          : "none";
+      });
+    });
+  }
+
+  if (langPresetOptionsList) {
+    langPresetOptionsList.addEventListener("click", (e) => {
+      const listItem = e.target.closest("li");
+      if (listItem) {
+        const newPreset = listItem.getAttribute("data-value");
+        const newPresetText = listItem.textContent;
+
+        langPresetSelectedLabel.textContent = newPresetText;
+        browser.storage.local.set({ codeocr_lang_preset: newPreset });
+        langPresetDropdownList.style.display = "none";
+      }
+    });
+
+    handleDropdownKeyboardNavigation(
+      langPresetSearchInput,
+      langPresetOptionsList,
+      langPresetDropdownList,
+    );
+  }
+
+  // Initialize the selected label for language preset
+  const initialLangPreset = settings.codeocr_lang_preset || "default";
+  const initialLangPresetText =
+    initialLangPreset === "default"
+      ? "Default (Auto-Detect)"
+      : capitalize(initialLangPreset);
+  if (langPresetSelectedLabel) {
+    langPresetSelectedLabel.textContent = initialLangPresetText;
+  }
+
+  // --- Main Language Selector Logic ---
+  const mainSearchContainer = document.getElementById(
+    "codeocr-language-search-container",
+  );
+  const mainVisibleSelection = document.getElementById(
+    "codeocr-visible-selection",
+  );
+  const mainSelectedLabel = document.getElementById(
+    "codeocr-selected-language-label",
+  );
+  const mainLanguageList = document.getElementById("codeocr-language-list");
+  const mainSearchInput = document.getElementById("codeocr-search-input");
+  const mainOptionsList = document.getElementById("codeocr-options-list");
+
+  mainVisibleSelection.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isVisible = mainLanguageList.style.display === "block";
+    mainLanguageList.style.display = isVisible ? "none" : "block";
+    if (!isVisible) {
+      // If dropdown is now visible
+      mainSearchInput.focus();
+    }
+  });
+
+  mainSearchInput.addEventListener("input", (e) => {
+    const query = e.target.value.toLowerCase();
+    Array.from(mainOptionsList.children).forEach((li) => {
+      li.style.display = li
+        .getAttribute("data-value")
+        .toLowerCase()
+        .includes(query)
+        ? "block"
+        : "none";
+    });
+  });
+
+  mainOptionsList.addEventListener("click", (e) => {
+    const listItem = e.target.closest("li");
+    if (listItem) {
+      const newLanguage = listItem.getAttribute("data-value");
+      if (newLanguage === currentLanguage) {
+        mainLanguageList.style.display = "none";
+        return;
+      }
+      stopSpinner(outputEditor);
+      currentLanguage = newLanguage;
+      mainSelectedLabel.textContent = capitalize(currentLanguage);
+      mainLanguageList.style.display = "none";
+      outputEditor.textContent = `Re-analyzing with new language: ${capitalize(
+        currentLanguage,
+      )}...`;
+      browser.runtime.sendMessage({
+        command: "rerun_ocr",
+        newLanguage: currentLanguage,
+      });
+    }
+  });
+
+  handleDropdownKeyboardNavigation(
+    mainSearchInput,
+    mainOptionsList,
+    mainLanguageList,
+  );
+
+  // --- Global Click Listeners ---
+  document.addEventListener("click", (e) => {
+    if (!mainSearchContainer.contains(e.target))
+      mainLanguageList.style.display = "none";
+    if (!settingsBtn.contains(e.target) && !settingsPanel.contains(e.target))
+      settingsPanel.style.display = "none";
+
+    const possibleLangsSearchContainer = document.getElementById(
+      "codeocr-possible-languages-search-container",
+    );
+    const possibleLangsDropdownList = document.getElementById(
+      "codeocr-possible-languages-dropdown-list",
+    );
+    if (
+      possibleLangsSearchContainer &&
+      possibleLangsDropdownList &&
+      !possibleLangsSearchContainer.contains(e.target)
+    ) {
+      possibleLangsDropdownList.style.display = "none";
+    }
+
+    const langPresetSearchContainer = document.getElementById(
+      "codeocr-lang-preset-search-container",
+    );
+    const langPresetDropdownList = document.getElementById(
+      "codeocr-lang-preset-dropdown-list",
+    );
+    if (
+      langPresetSearchContainer &&
+      langPresetDropdownList &&
+      !langPresetSearchContainer.contains(e.target)
+    ) {
+      langPresetDropdownList.style.display = "none";
+    }
+  });
+
+  // --- Possible Languages Dropdown Logic ---
+  const possibleLangsVisibleSelection = document.getElementById(
+    "codeocr-possible-languages-visible-selection",
+  );
+  const possibleLangsDropdownList = document.getElementById(
+    "codeocr-possible-languages-dropdown-list",
+  );
+
+  if (possibleLangsVisibleSelection && possibleLangsDropdownList) {
+    if (possibleLangsVisibleSelection && possibleLangsDropdownList) {
+      possibleLangsVisibleSelection.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isVisible = possibleLangsDropdownList.style.display === "block";
+        possibleLangsDropdownList.style.display = isVisible ? "none" : "block";
+        if (!isVisible) {
+          // If dropdown is now visible
+          document
+            .getElementById("codeocr-possible-languages-search-input")
+            .focus();
+        }
+      });
+    }
+
+    // --- Possible Languages Search Logic ---
+    const possibleLangsSearchInput = document.getElementById(
+      "codeocr-possible-languages-search-input",
+    );
+    const possibleLangsCheckboxes = document.getElementById(
+      "codeocr-possible-languages-checkboxes",
+    );
+
+    if (possibleLangsSearchInput && possibleLangsCheckboxes) {
+      possibleLangsSearchInput.addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase();
+        Array.from(possibleLangsCheckboxes.children).forEach((div) => {
+          const label = div.querySelector("label");
+          if (label) {
+            div.style.display = label.textContent.toLowerCase().includes(query)
+              ? "flex"
+              : "none";
+          }
+        });
+      });
+
+      handleDropdownKeyboardNavigation(
+        possibleLangsSearchInput,
+        possibleLangsCheckboxes,
+        possibleLangsDropdownList,
+      );
+    }
+  }
+
+  // --- Copy Logic ---
+  copyBtn.addEventListener("click", () => {
+    stopSpinner(outputEditor);
+    const contentToCopy = outputEditor.textContent;
+    navigator.clipboard.writeText(contentToCopy).then(() => {
+      lastBuffer.code = contentToCopy;
+      lastBuffer.language = currentLanguage;
+      copyBtn.style.backgroundColor = "#00a878";
+      copyBtn.textContent = "Copied! Closing...";
+      setTimeout(closeModal, 700);
+    });
+  });
+
+  // --- Spinner Logic ---
+  if (isLoading) {
+    outputEditor.style.fontSize = "3rem";
+    outputEditor.style.textAlign = "center";
+    let frameIndex = 0;
+    spinnerIntervalId = setInterval(() => {
+      outputEditor.textContent = spinner.frames[frameIndex];
+      frameIndex = (frameIndex + 1) % spinner.frames.length;
+    }, spinner.interval);
+  }
 }
 
 // ==========================================================

@@ -9,7 +9,7 @@
     "browser_specific_settings": {
         "gecko": {
             "id": "codeocr@vladika.net",
-            "strict_min_version": "109.0"
+            "strict_min_version": "112.0"
         }
     },
     "permissions": [

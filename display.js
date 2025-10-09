@@ -5,6 +5,7 @@ let availableLanguages = [];
 let currentLanguage; // Holds the language selected in the dropdown
 let userFontSize = 2; // Default font size in rem
 let selectedPossibleLanguages = []; // New: To store selected languages from checkboxes
+const browser = this.browser || chrome;
 
 const spinner = {
   interval: 80,
@@ -25,7 +26,7 @@ function stopSpinner(element) {
   }
   if (element) {
     element.style.fontSize = `${userFontSize}rem`;
-    element.style.textAlign = ""; // Add this line to reset text alignment
+    element.style.textAlign = "";
   }
 }
 

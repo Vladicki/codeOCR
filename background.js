@@ -4,7 +4,7 @@
 // Removed GEMINI_PROMPT_TEXT import as all prompt structure is now in 'languages'
 import { languages } from "./languages.js";
 import { lang } from "./langs.js";
-
+const browser = this.browser || chrome;
 // --- Global State ---
 const activeTabs = new Set();
 let lastCroppedImageDataByTab = {}; // Store image data by tab ID

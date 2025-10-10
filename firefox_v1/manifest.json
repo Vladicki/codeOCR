@@ -37,7 +37,7 @@
         "toggle-selection-mode": {
             "suggested_key": {
                 "default": "Alt+C",
-                "mac": "Command+C"
+                "mac": "Alt+C"
             },
             "description": "Toggle selection mode for codeOCR"
         }

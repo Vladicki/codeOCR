@@ -1,10 +1,7 @@
 // --- background.js ---
 
-// 💡 IMPORT: Import from external modules
-// Removed GEMINI_PROMPT_TEXT import as all prompt structure is now in 'languages'
 import { languages } from "./languages.js";
 import { lang } from "./langs.js";
-const browser = this.browser || chrome;
 // --- Global State ---
 const activeTabs = new Set();
 let lastCroppedImageDataByTab = {}; // Store image data by tab ID
@@ -128,12 +125,26 @@ function sendToBackend(tabId, imageData, prompt) {
     body: JSON.stringify({ image_data: imageData, prompt: prompt }),
   })
     .then((response) => {
-      if (!response.ok)
-        return response.text().then((text) => {
-          throw new Error(
-            `HTTP error! Status: ${response.status}. Message: ${text}`,
-          );
-        });
+      // Check for non-OK status codes (4xx or 5xx)
+      if (!response.ok) {
+        // Log the full error to the BACKGROUND CONSOLE for debugging
+        console.error(
+          `Backend Request Failed: Status ${response.status}`,
+          response,
+        );
+
+        // For the user, throw a generic error message based on status
+        if (response.status === 403) {
+          // Specific message for Forbidden error (e.g., ID mismatch)
+          throw new Error("SERVER_ERROR: Authentication failed.");
+        } else if (response.status >= 500) {
+          // Generic message for server issues (5xx)
+          throw new Error("SERVER_ERROR: Internal server problem.");
+        } else {
+          // Generic message for other client errors (4xx like 400, 404)
+          throw new Error("SERVER_ERROR: Request failed.");
+        }
+      }
       return response.json();
     })
     .then((data) => {
@@ -145,11 +156,32 @@ function sendToBackend(tabId, imageData, prompt) {
       });
     })
     .catch((error) => {
-      // Improved error message to guide the user
-      const errorMessage = `[NETWORK ERROR] Failed to connect to proxy server (${apiEndpoint}). Check server status or CORS settings. Details: ${error.message}`;
-      browser.tabs.sendMessage(tabId, {
+      // Determine the message shown to the user
+      let userMessage;
+
+      // Check for network connectivity issues (e.g., CORS, DNS, server down)
+      if (
+        error.message.includes("Failed to fetch") ||
+        error.message.includes("CORS")
+      ) {
+        userMessage =
+          "Failed to connect to proxy server. Check server status or CORS settings.";
+      } else if (error.message.startsWith("SERVER_ERROR:")) {
+        // Use the generic error thrown above (e.g., "SERVER_ERROR: Authentication failed.")
+        userMessage = "Failed to connect to proxy server.";
+        // We strip the details for the user, as requested.
+      } else {
+        // Catch-all for unexpected local errors
+        userMessage = `[EXTENSION ERROR] An unexpected issue occurred. Details: ${error.message}`;
+      }
+
+      // Log the full error for extension developer reference
+      console.error("Client Error Handling:", error);
+
+      // Send the generic user-friendly message
+      chrome.tabs.sendMessage(tabId, {
         command: "update_display",
-        text: errorMessage,
+        text: userMessage,
       });
     });
 }

@@ -94,7 +94,7 @@ async function renderPossibleLanguagesCheckboxes(allLangsData) {
   );
   if (!checkboxesDiv || !selectedLabel) return;
 
-  const result = await browser.storage.local.get(["selectedLanguages"]);
+  const result = await chrome.storage.local.get(["selectedLanguages"]);
   selectedPossibleLanguages = result.selectedLanguages || [];
 
   checkboxesDiv.innerHTML = "";
@@ -167,7 +167,7 @@ function togglePossibleLanguageSelection(language, index, isChecked) {
       selectedPossibleLanguages.splice(existingIndex, 1);
     }
   }
-  browser.storage.local.set({ selectedLanguages: selectedPossibleLanguages });
+  chrome.storage.local.set({ selectedLanguages: selectedPossibleLanguages });
 }
 
 // ==========================================================
@@ -305,7 +305,7 @@ async function createDisplayModal(
   let code = textOrCode;
   let language = initialLanguage;
 
-  const settings = await browser.storage.local.get([
+  const settings = await chrome.storage.local.get([
     "codeocr_font_size",
     "codeocr_lang_preset",
     "codeocr_gui_scale",
@@ -367,7 +367,7 @@ async function createDisplayModal(
         </div>
     </div>
     <div id="codeocr-output-editor" contenteditable="true" spellcheck="false" style="flex-grow: 1; padding: 0.9375rem; margin: 0; overflow: auto; white-space: pre-wrap; font-family: inherit; font-size: ${userFontSize}rem; line-height: 1.4; caret-color: white; outline: none; cursor: text;"></div>
-    <button id="codeocr-copy" style="padding: 0.5rem 0.9375rem; background-color: #007acc; color: white; border: none; border-radius: 0 0 0.5rem 0.5rem; cursor: pointer; font-size: 1.2em; transition: background-color 0.2s;">Copy (Alt+Enter)</button>
+    <button id="codeocr-copy" style="padding: 0.5rem 0.9375rem; background-color: #007acc; color: white; border: none; border-radius: 0 0 0.5rem 0.5rem; cursor: pointer; font-size: 1.2em; transition: background-color 0.2s;">Copy: (Alt / ⌥) + Enter</button>
     <div id="codeocr-resize-handle" style="position: absolute; bottom: 0; right: 0; width: 0.9375rem; height: 0.9375rem; background: transparent; cursor: nwse-resize;"></div>
     
     <div id="codeocr-settings-panel" style="display: none; position: absolute; top: 3rem; right: 0.3125rem; background: #252526; border: 1px solid #30302e; border-radius: 0.5rem; padding: 0.9375rem; z-index: 10; width: 21.875rem; color: #f0efed; font-size: 2rem;">
@@ -410,8 +410,8 @@ async function createDisplayModal(
         <div class="setting-item" style="font-size: 0.6em;">
             <h4 style="margin-bottom: 0.3125rem; color: #00b4ff;">Shortcuts</h4>
             <ul style="margin: 0; padding-left: 1.25rem;">
-                <li><strong style="color: #00b4ff;">Alt+C / ⌘+C:</strong> Start Capture</li>
-                <li><strong style="color: #00b4ff;">Alt+Enter / ⌘+Enter:</strong> Copy & Close / Re-open</li>
+                <li><strong style="color: #00b4ff;">Alt/⌥ + C:</strong> Start Capture</li>
+                <li><strong style="color: #00b4ff;">Alt/⌥ + Enter:</strong> Copy & Close / Re-open</li>
                 <li><strong style="color: #00b4ff;">Escape:</strong> Close Window</li>
             </ul>
         </div>
@@ -460,7 +460,7 @@ async function createDisplayModal(
     if (newSize >= 0.5) {
       outputEditor.style.fontSize = `${newSize}rem`;
       userFontSize = newSize;
-      browser.storage.local.set({ codeocr_font_size: newSize });
+      chrome.storage.local.set({ codeocr_font_size: newSize });
     }
   });
 
@@ -469,7 +469,7 @@ async function createDisplayModal(
     const newScale = parseFloat(e.target.value);
     if (newScale >= 0.5 && newScale <= 2) {
       modal.style.transform = `scale(${newScale})`;
-      browser.storage.local.set({ codeocr_gui_scale: newScale });
+      chrome.storage.local.set({ codeocr_gui_scale: newScale });
     }
   });
 
@@ -527,7 +527,7 @@ async function createDisplayModal(
         const newPresetText = listItem.textContent;
 
         langPresetSelectedLabel.textContent = newPresetText;
-        browser.storage.local.set({ codeocr_lang_preset: newPreset });
+        chrome.storage.local.set({ codeocr_lang_preset: newPreset });
         langPresetDropdownList.style.display = "none";
       }
     });
@@ -600,7 +600,7 @@ async function createDisplayModal(
       outputEditor.textContent = `Re-analyzing with new language: ${capitalize(
         currentLanguage,
       )}...`;
-      browser.runtime.sendMessage({
+      chrome.runtime.sendMessage({
         command: "rerun_ocr",
         newLanguage: currentLanguage,
       });
@@ -764,7 +764,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-browser.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message) => {
   if (message.command === "show_loading_modal") {
     if (message.languages) {
       availableLanguages = message.languages;

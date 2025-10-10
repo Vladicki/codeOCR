@@ -1,0 +1,37 @@
+{
+    "manifest_version": 3,
+    "name": "codeOCR",
+    "version": "1.0",
+    "description": "Language-aware OCR for code snippets.",
+    "icons": {
+        "48": "icons/icon-48.png"
+    },
+    "permissions": [
+        "activeTab",
+        "tabs",
+        "clipboardWrite",
+        "downloads",
+        "scripting",
+        "storage"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "action": {
+        "default_icon": "icons/icon-48.png",
+        "default_title": "Take Code Screenshot"
+    },
+    "commands": {
+        "toggle-selection-mode": {
+            "suggested_key": {
+                "default": "Alt+C",
+                "mac": "Alt+C"
+            },
+            "description": "Toggle selection mode for codeOCR"
+        }
+    }
+}

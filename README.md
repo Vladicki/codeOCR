@@ -4,8 +4,8 @@ codeOCR is an open-source image recognition utility designed to be highly accura
 
 This tool is implemented as a browser extension with a powerful Go backend, providing a seamless experience for developers to extract code from screenshots, online tutorials, or any image source directly within their browser.
 <p float="left">
-<img width="313" height="323" alt="image" src="https://github.com/user-attachments/assets/5b1eef8f-7fec-4e1e-a085-e7a7a65d028f" />
-<img width="288" height="339" alt="image" src="https://github.com/user-attachments/assets/deb36956-87d5-4989-9ccd-6f24bd753a39" />
+<img width="440" height="440" alt="image" src="https://github.com/user-attachments/assets/5b1eef8f-7fec-4e1e-a085-e7a7a65d028f" />
+<img width="300" height="400" alt="image" src="https://github.com/user-attachments/assets/150f8394-026b-4913-ba7d-dc90d0b6d68a" />
 
 <p/>
 ---

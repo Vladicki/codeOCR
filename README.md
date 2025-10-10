@@ -6,10 +6,11 @@ This tool is implemented as a browser extension with a powerful Go backend, prov
 <p float="left">
 <img width="440" height="440" alt="image" src="https://github.com/user-attachments/assets/5b1eef8f-7fec-4e1e-a085-e7a7a65d028f" />
     <img width="200" height="440" alt="image" src="https://github.com/user-attachments/assets/ced74a7e-b6fc-4c5f-b1ac-2951a3b17c74" />
-
 <img width="300" height="400" alt="image" src="https://github.com/user-attachments/assets/150f8394-026b-4913-ba7d-dc90d0b6d68a" />
 
 <p/>
+Native supported for almost ~100 languages and frameworks
+    
 ---
 
 ## Installation & Local set up for improved Speed

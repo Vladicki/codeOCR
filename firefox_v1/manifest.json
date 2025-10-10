@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "codeOCR",
-    "version": "1.0",
+    "version": "1.1",
     "description": "Language-aware OCR for code snippets.",
     "icons": {
         "48": "icons/icon-48.png"

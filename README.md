@@ -3,9 +3,11 @@
 codeOCR is an open-source image recognition utility designed to be highly accurate in recognizing and parsing code from images. It excels where traditional OCR tools falter, boasting up to 90% higher accuracy in identifying programming languages and preserving the original structure, indentation, and syntax of code snippets.
 
 This tool is implemented as a browser extension with a powerful Go backend, providing a seamless experience for developers to extract code from screenshots, online tutorials, or any image source directly within their browser.
-
+<p float="left">
 <img width="313" height="323" alt="image" src="https://github.com/user-attachments/assets/5b1eef8f-7fec-4e1e-a085-e7a7a65d028f" />
+<img width="288" height="339" alt="image" src="https://github.com/user-attachments/assets/deb36956-87d5-4989-9ccd-6f24bd753a39" />
 
+<p/>
 ---
 
 ## Installation & Local set up for improved Speed
